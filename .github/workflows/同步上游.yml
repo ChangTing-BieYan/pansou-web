@@ -1,0 +1,61 @@
+name: 同步上游（保留前端修改）
+
+on:
+  workflow_dispatch:      # 手动触发
+  schedule:
+    - cron: "0 */6 * * *" # 每 6 小时触发一次
+
+jobs:
+  sync-upstream:
+    runs-on: ubuntu-latest
+    steps:
+      - name: 检出仓库
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: 设置 Git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: 添加上游仓库
+        run: |
+          git remote add upstream https://github.com/fish2018/pansou-web.git || true
+          git fetch upstream main
+
+      - name: 检查上游是否有新提交
+        id: check
+        run: |
+          LOCAL=$(git rev-parse HEAD)
+          UPSTREAM=$(git rev-parse FETCH_HEAD)
+          echo "LOCAL=$LOCAL"
+          echo "UPSTREAM=$UPSTREAM"
+          if git merge-base --is-ancestor $UPSTREAM $LOCAL; then
+            echo "✅ 上游提交已包含在本地，无需同步"
+            exit 0
+          else
+            echo "🔄 上游有新提交"
+          fi
+
+      - name: 保存本地修改
+        run: |
+          mkdir -p /tmp/mychanges
+          cp Dockerfile /tmp/mychanges/ || true
+          cp build-docker.yml /tmp/mychanges/ || true
+
+      - name: 合并上游
+        run: |
+          git checkout main
+          git merge upstream/main -X theirs --no-edit || true
+
+      - name: 恢复本地修改
+        run: |
+          cp /tmp/mychanges/Dockerfile ./ || true
+          cp /tmp/mychanges/build-docker.yml ./ || true
+
+      - name: 提交并推送
+        run: |
+          git add .
+          git diff --cached --quiet || git commit -m "🔄 同步上游并保留 Dockerfile 和 build-docker.yml"
+          git push origin main

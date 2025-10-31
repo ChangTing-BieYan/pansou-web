@@ -12,7 +12,7 @@ env:
   IMAGE_NAME: ${{ github.repository }}
 
 jobs:
-  build:
+  build-armv7:
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -27,7 +27,7 @@ jobs:
     - name: Checkout backend repository
       uses: actions/checkout@v4
       with:
-        repository: fish2018/pansou
+        repository: ChangTing-BieYan/pansou
         path: backend
         # 如果后端仓库是私有的，需要配置token
         # token: ${{ secrets.BACKEND_REPO_TOKEN }}
@@ -59,24 +59,17 @@ jobs:
       working-directory: backend
       run: go mod download
 
-    - name: Build backend for multiple architectures
+    - name: Build backend for ARMv7
       working-directory: backend
       run: |
-        # 构建 AMD64 版本
-        CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -a -installsuffix cgo -o pansou-amd64 .
-        # 构建 ARM64 版本
-        CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -a -installsuffix cgo -o pansou-arm64 .
-        chmod +x pansou-*
+        CGO_ENABLED=0 GOOS=linux GOARCH=arm GOARM=7 go build -a -installsuffix cgo -o pansou-armv7 .
+        chmod +x pansou-armv7
 
     - name: Prepare build context
       run: |
         mkdir -p build-context
-        # 复制前端构建产物
         cp -r frontend/dist build-context/frontend-dist
-        # 复制后端二进制文件 (多架构)
-        cp backend/pansou-amd64 build-context/
-        cp backend/pansou-arm64 build-context/
-        # 复制Docker相关文件
+        cp backend/pansou-armv7 build-context/
         cp frontend/Dockerfile build-context/
         cp frontend/start.sh build-context/
         chmod +x build-context/start.sh
@@ -93,33 +86,28 @@ jobs:
         password: ${{ secrets.GITHUB_TOKEN }}
 
     - name: Extract metadata
-      id: meta
+      id: meta_armv7   # 唯一 id
       uses: docker/metadata-action@v5
       with:
         images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
         tags: |
-          # 分支标签
           type=ref,event=branch
-          # PR标签
           type=ref,event=pr
-          # 语义化版本标签
           type=semver,pattern={{version}}
           type=semver,pattern={{major}}.{{minor}}
           type=semver,pattern={{major}}
-          # latest标签 - 仅在main分支推送时生成
           type=raw,value=latest,enable={{is_default_branch}}
-          # commit hash标签
           type=sha,prefix=sha-
 
     - name: Build and push Docker image
       uses: docker/build-push-action@v5
       with:
         context: build-context
-        platforms: linux/amd64,linux/arm64
+        platforms: linux/arm/v7
         push: ${{ github.event_name != 'pull_request' }}
-        tags: ${{ steps.meta.outputs.tags }}
-        labels: ${{ steps.meta.outputs.labels }}
+        tags: ${{ steps.meta_armv7.outputs.tags }}
+        labels: ${{ steps.meta_armv7.outputs.labels }}
         build-args: |
-          BUILDTIME=${{ fromJSON(steps.meta.outputs.json).labels['org.opencontainers.image.created'] }}
-          VERSION=${{ fromJSON(steps.meta.outputs.json).labels['org.opencontainers.image.version'] }}
-          REVISION=${{ fromJSON(steps.meta.outputs.json).labels['org.opencontainers.image.revision'] }}
+          BUILDTIME=${{ fromJSON(steps.meta_armv7.outputs.json).labels['org.opencontainers.image.created'] }}
+          VERSION=${{ fromJSON(steps.meta_armv7.outputs.json).labels['org.opencontainers.image.version'] }}
+          REVISION=${{ fromJSON(steps.meta_armv7.outputs.json).labels['org.opencontainers.image.revision'] }}
