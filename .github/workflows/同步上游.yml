@@ -42,6 +42,7 @@ jobs:
         run: |
           mkdir -p /tmp/mychanges
           cp Dockerfile /tmp/mychanges/ || true
+          cp docker-compose.yml /tmp/mychanges/ || true
           cp build-docker.yml /tmp/mychanges/ || true
 
       - name: 合并上游
@@ -49,13 +50,60 @@ jobs:
           git checkout main
           git merge upstream/main -X theirs --no-edit || true
 
-      - name: 恢复本地修改
+      - name: 保留本地 CHANNELS 与 ENABLED_PLUGINS
         run: |
-          cp /tmp/mychanges/Dockerfile ./ || true
+          echo "🧩 检查并保留本地 CHANNELS 与 ENABLED_PLUGINS"
+
+          # ============ 处理 docker-compose.yml ============
+          if [ -f docker-compose.yml ] && [ -f /tmp/mychanges/docker-compose.yml ]; then
+            LOCAL_CHANNELS=$(grep -E '^\s*- CHANNELS=' /tmp/mychanges/docker-compose.yml || true)
+            LOCAL_PLUGINS=$(grep -E '^\s*- ENABLED_PLUGINS=' /tmp/mychanges/docker-compose.yml || true)
+            
+            grep -v -E '^\s*- (CHANNELS|ENABLED_PLUGINS)=' docker-compose.yml > /tmp/upstream_clean.yml
+            grep -v -E '^\s*- (CHANNELS|ENABLED_PLUGINS)=' /tmp/mychanges/docker-compose.yml > /tmp/local_clean.yml
+
+            if cmp -s /tmp/upstream_clean.yml /tmp/local_clean.yml; then
+              echo "✅ 上游只修改了 CHANNELS 或 ENABLED_PLUGINS，不合并 docker-compose.yml"
+              cp /tmp/mychanges/docker-compose.yml docker-compose.yml
+            else
+              echo "🔄 上游修改了其他内容，合并并恢复本地 CHANNELS 与 ENABLED_PLUGINS"
+              if [ -n "$LOCAL_CHANNELS" ]; then
+                sed -i "/- CHANNELS=/c\\$LOCAL_CHANNELS" docker-compose.yml
+              fi
+              if [ -n "$LOCAL_PLUGINS" ]; then
+                sed -i "/- ENABLED_PLUGINS=/c\\$LOCAL_PLUGINS" docker-compose.yml
+              fi
+            fi
+          fi
+
+          # ============ 处理 Dockerfile ============
+          if [ -f Dockerfile ] && [ -f /tmp/mychanges/Dockerfile ]; then
+            LOCAL_CHANNELS=$(grep '^ENV CHANNELS=' /tmp/mychanges/Dockerfile || true)
+            LOCAL_PLUGINS=$(grep '^ENV ENABLED_PLUGINS=' /tmp/mychanges/Dockerfile || true)
+
+            grep -v -E '^ENV (CHANNELS|ENABLED_PLUGINS)=' Dockerfile > /tmp/upstream_clean_dockerfile
+            grep -v -E '^ENV (CHANNELS|ENABLED_PLUGINS)=' /tmp/mychanges/Dockerfile > /tmp/local_clean_dockerfile
+
+            if cmp -s /tmp/upstream_clean_dockerfile /tmp/local_clean_dockerfile; then
+              echo "✅ 上游只修改了 CHANNELS 或 ENABLED_PLUGINS，不合并 Dockerfile"
+              cp /tmp/mychanges/Dockerfile Dockerfile
+            else
+              echo "🔄 上游修改了其他内容，合并并恢复本地 CHANNELS 与 ENABLED_PLUGINS"
+              if [ -n "$LOCAL_CHANNELS" ]; then
+                sed -i "/^ENV CHANNELS=/c\\$LOCAL_CHANNELS" Dockerfile
+              fi
+              if [ -n "$LOCAL_PLUGINS" ]; then
+                sed -i "/^ENV ENABLED_PLUGINS=/c\\$LOCAL_PLUGINS" Dockerfile
+              fi
+            fi
+          fi
+
+      - name: 恢复其他本地修改
+        run: |
           cp /tmp/mychanges/build-docker.yml ./ || true
 
       - name: 提交并推送
         run: |
           git add .
-          git diff --cached --quiet || git commit -m "🔄 同步上游并保留 Dockerfile 和 build-docker.yml"
+          git diff --cached --quiet || git commit -m "🔄 同步上游并保留自定义 CHANNELS/ENABLED_PLUGINS"
           git push origin main
