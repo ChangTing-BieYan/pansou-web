@@ -42,6 +42,9 @@ const showChannelInput = ref(false);
 const saveSuccess = ref(false);
 const saveTimeout = ref<number | null>(null);
 
+// 导出模态框
+const showExportModal = ref(false);
+
 // Tab状态
 const activeTab = ref<'channels' | 'plugins' | 'diskTypes'>('channels');
 
@@ -251,6 +254,78 @@ const resetToDefault = () => {
 // 判断是否为自定义频道
 const isCustomChannel = (channel: string) => {
   return customChannels.value.includes(channel);
+};
+
+// 导出配置
+const getExportData = () => {
+  // 获取插件列表
+  const plugins = selectedPlugins.value.join(',');
+  
+  // 获取TG频道列表
+  const channels = selectedChannels.value.join(',');
+  
+  return {
+    plugins,
+    channels
+  };
+};
+
+const openExportModal = () => {
+  showExportModal.value = true;
+};
+
+const closeExportModal = () => {
+  showExportModal.value = false;
+};
+
+// 复制到剪贴板的通用函数（支持降级）
+const copyToClipboard = async (text: string, successMessage: string = '已复制到剪贴板！') => {
+  try {
+    // 尝试使用现代 Clipboard API
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      await navigator.clipboard.writeText(text);
+      alert(successMessage);
+      return true;
+    }
+    
+    // 降级使用传统方法
+    const textarea = document.createElement('textarea');
+    textarea.value = text;
+    textarea.style.position = 'fixed';
+    textarea.style.opacity = '0';
+    textarea.style.left = '-9999px';
+    document.body.appendChild(textarea);
+    textarea.select();
+    textarea.setSelectionRange(0, text.length);
+    const success = document.execCommand('copy');
+    document.body.removeChild(textarea);
+    
+    if (success) {
+      alert(successMessage);
+      return true;
+    } else {
+      alert('复制失败，请手动复制');
+      return false;
+    }
+  } catch (error) {
+    console.error('复制失败:', error);
+    alert('复制失败，请手动复制');
+    return false;
+  }
+};
+
+// 复制插件配置
+const copyPluginsConfig = async () => {
+  const data = getExportData();
+  const content = data.plugins ? `export ENABLED_PLUGINS=${data.plugins}` : 'export ENABLED_PLUGINS=';
+  await copyToClipboard(content, '插件配置已复制！');
+};
+
+// 复制TG频道配置
+const copyChannelsConfig = async () => {
+  const data = getExportData();
+  const content = data.channels ? `export CHANNELS=${data.channels}` : 'export CHANNELS=';
+  await copyToClipboard(content, 'TG频道配置已复制！');
 };
 
 // 组件挂载
@@ -478,6 +553,9 @@ onMounted(() => {
 
       <!-- 底部操作栏 -->
       <div class="action-bar">
+        <button @click="openExportModal" class="export-btn">
+          导出配置
+        </button>
         <button @click="resetToDefault" class="reset-btn">
           重置默认
         </button>
@@ -487,6 +565,88 @@ onMounted(() => {
         </button>
       </div>
     </div>
+
+    <!-- 导出模态框 -->
+    <Teleport to="body">
+      <Transition name="modal-fade">
+        <div v-if="showExportModal" class="modal-overlay" @click="closeExportModal">
+          <div class="modal-content" @click.stop>
+            <div class="modal-header">
+              <h2 class="modal-title">导出配置</h2>
+              <button @click="closeExportModal" class="modal-close">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+                </svg>
+              </button>
+            </div>
+            
+            <div class="modal-body">
+              <div class="export-info">
+                <p>以下是您当前的配置信息，可以分别复制使用。</p>
+                <a 
+                  href="https://github.com/fish2018/pansou/issues/4" 
+                  target="_blank" 
+                  rel="noopener noreferrer"
+                  class="github-link"
+                >
+                  📌 查看更多TG频道、QQ频道和搜索插件配置 →
+                </a>
+              </div>
+              
+              <!-- 插件配置区域 -->
+              <div class="export-section">
+                <div class="section-header">
+                  <h3 class="section-title">
+                    <span class="section-icon">🔌</span>
+                    搜索插件配置
+                  </h3>
+                  <button @click="copyPluginsConfig" class="copy-section-btn">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"/>
+                    </svg>
+                    <span>复制</span>
+                  </button>
+                </div>
+                <div class="export-content">
+                  <pre class="export-code">{{ (() => {
+                    const data = getExportData();
+                    return data.plugins ? `export ENABLED_PLUGINS=${data.plugins}` : 'export ENABLED_PLUGINS=';
+                  })() }}</pre>
+                </div>
+              </div>
+              
+              <!-- TG频道配置区域 -->
+              <div class="export-section">
+                <div class="section-header">
+                  <h3 class="section-title">
+                    <span class="section-icon">📡</span>
+                    TG频道配置
+                  </h3>
+                  <button @click="copyChannelsConfig" class="copy-section-btn">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"/>
+                    </svg>
+                    <span>复制</span>
+                  </button>
+                </div>
+                <div class="export-content">
+                  <pre class="export-code">{{ (() => {
+                    const data = getExportData();
+                    return data.channels ? `export CHANNELS=${data.channels}` : 'export CHANNELS=';
+                  })() }}</pre>
+                </div>
+              </div>
+            </div>
+            
+            <div class="modal-footer">
+              <button @click="closeExportModal" class="modal-close-btn-footer">
+                关闭
+              </button>
+            </div>
+          </div>
+        </div>
+      </Transition>
+    </Teleport>
   </div>
 </template>
 
@@ -957,6 +1117,7 @@ onMounted(() => {
 }
 
 .reset-btn,
+.export-btn,
 .save-btn {
   padding: 0.75rem 1.5rem;
   border: none;
@@ -976,7 +1137,19 @@ onMounted(() => {
 }
 
 .reset-btn:hover {
-  background: hsl(var(--accent));
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px hsl(var(--primary) / 0.4);
+}
+
+.export-btn {
+  background: hsl(var(--primary));
+  color: hsl(var(--primary-foreground));
+  border: 1px solid hsl(var(--border));
+}
+
+.export-btn:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px hsl(var(--primary) / 0.4);
 }
 
 .save-btn {
@@ -992,6 +1165,242 @@ onMounted(() => {
 
 .save-btn.success {
   background: #10b981;
+}
+
+/* 模态框样式 */
+.modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.6);
+  backdrop-filter: blur(4px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  padding: 1rem;
+}
+
+.modal-content {
+  background: hsl(var(--background));
+  border: 1px solid hsl(var(--border));
+  border-radius: 1rem;
+  max-width: 800px;
+  width: 100%;
+  max-height: 90vh;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+  animation: modalSlideUp 0.3s ease-out;
+}
+
+@keyframes modalSlideUp {
+  from {
+    opacity: 0;
+    transform: translateY(20px) scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.modal-header {
+  padding: 1.5rem;
+  border-bottom: 1px solid hsl(var(--border));
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.modal-title {
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: hsl(var(--foreground));
+  margin: 0;
+}
+
+.modal-close {
+  padding: 0.5rem;
+  background: transparent;
+  border: none;
+  color: hsl(var(--muted-foreground));
+  cursor: pointer;
+  border-radius: 0.375rem;
+  transition: all 0.2s ease;
+}
+
+.modal-close:hover {
+  background: hsl(var(--accent));
+  color: hsl(var(--accent-foreground));
+}
+
+.modal-body {
+  padding: 1.5rem;
+  overflow-y: auto;
+  flex: 1;
+}
+
+.export-info {
+  margin-bottom: 1.5rem;
+}
+
+.export-info p {
+  color: hsl(var(--muted-foreground));
+  margin-bottom: 1rem;
+  font-size: 0.95rem;
+}
+
+.github-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  color: hsl(var(--primary));
+  text-decoration: none;
+  font-weight: 500;
+  font-size: 0.95rem;
+  padding: 0.5rem 1rem;
+  background: hsl(var(--primary) / 0.1);
+  border-radius: 0.5rem;
+  transition: all 0.2s ease;
+}
+
+.github-link:hover {
+  background: hsl(var(--primary) / 0.2);
+  transform: translateX(4px);
+}
+
+/* 配置区域 */
+.export-section {
+  margin-bottom: 1.5rem;
+  border: 1px solid hsl(var(--border));
+  border-radius: 0.75rem;
+  overflow: hidden;
+  transition: all 0.2s ease;
+}
+
+.export-section:hover {
+  border-color: hsl(var(--primary) / 0.3);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+}
+
+.export-section:last-child {
+  margin-bottom: 0;
+}
+
+.section-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 1rem 1.25rem;
+  background: hsl(var(--muted) / 0.3);
+  border-bottom: 1px solid hsl(var(--border));
+}
+
+.section-title {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 600;
+  color: hsl(var(--foreground));
+}
+
+.section-icon {
+  font-size: 1.25rem;
+}
+
+.copy-section-btn {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 1rem;
+  background: hsl(var(--primary));
+  color: hsl(var(--primary-foreground));
+  border: none;
+  border-radius: 0.375rem;
+  font-size: 0.875rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.copy-section-btn:hover {
+  background: hsl(var(--primary) / 0.9);
+  transform: translateY(-1px);
+  box-shadow: 0 2px 8px hsl(var(--primary) / 0.3);
+}
+
+.copy-section-btn:active {
+  transform: translateY(0);
+}
+
+.export-content {
+  background: hsl(var(--background));
+  padding: 1rem;
+}
+
+.export-code {
+  margin: 0;
+  font-family: ui-monospace, 'Cascadia Code', 'Source Code Pro', Menlo, Consolas, 'DejaVu Sans Mono', monospace;
+  font-size: 0.875rem;
+  line-height: 1.6;
+  color: hsl(var(--foreground));
+  white-space: pre-wrap;
+  word-wrap: break-word;
+}
+
+.modal-footer {
+  padding: 1.5rem;
+  border-top: 1px solid hsl(var(--border));
+  display: flex;
+  justify-content: center;
+  gap: 1rem;
+}
+
+.modal-close-btn-footer {
+  padding: 0.75rem 2rem;
+  background: hsl(var(--muted));
+  color: hsl(var(--muted-foreground));
+  border: none;
+  border-radius: 0.5rem;
+  font-size: 0.875rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.modal-close-btn-footer:hover {
+  background: hsl(var(--accent));
+  color: hsl(var(--accent-foreground));
+}
+
+/* 模态框过渡动画 */
+.modal-fade-enter-active,
+.modal-fade-leave-active {
+  transition: opacity 0.3s ease;
+}
+
+.modal-fade-enter-from,
+.modal-fade-leave-to {
+  opacity: 0;
+}
+
+.modal-fade-enter-active .modal-content,
+.modal-fade-leave-active .modal-content {
+  transition: transform 0.3s ease, opacity 0.3s ease;
+}
+
+.modal-fade-enter-from .modal-content,
+.modal-fade-leave-to .modal-content {
+  transform: translateY(20px) scale(0.95);
+  opacity: 0;
 }
 
 /* 响应式设计 */
@@ -1077,9 +1486,51 @@ onMounted(() => {
   }
 
   .reset-btn,
+  .export-btn,
   .save-btn {
     width: 100%;
     justify-content: center;
+  }
+
+  .modal-content {
+    max-height: 95vh;
+    margin: 0.5rem;
+  }
+
+  .modal-header {
+    padding: 1rem;
+  }
+
+  .modal-title {
+    font-size: 1.25rem;
+  }
+
+  .modal-body {
+    padding: 1rem;
+  }
+
+  .modal-footer {
+    padding: 1rem;
+  }
+
+  .modal-close-btn-footer {
+    width: 100%;
+    justify-content: center;
+  }
+
+  .section-header {
+    flex-direction: column;
+    gap: 0.75rem;
+    align-items: stretch;
+  }
+
+  .copy-section-btn {
+    width: 100%;
+    justify-content: center;
+  }
+
+  .export-code {
+    font-size: 0.75rem;
   }
 }
 </style>

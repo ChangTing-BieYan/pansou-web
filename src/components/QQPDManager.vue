@@ -711,6 +711,18 @@ const copyHashToClipboard = async () => {
                   <span>频道管理</span>
                   <span class="text-sm text-muted-foreground font-normal">({{ status.channel_count }} 个)</span>
                 </h3>
+                <a 
+                  href="https://github.com/fish2018/pansou/issues/4" 
+                  target="_blank" 
+                  rel="noopener noreferrer"
+                  class="channel-link"
+                  title="查看更多频道配置"
+                >
+                  <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/>
+                  </svg>
+                  <span class="link-text">更多频道</span>
+                </a>
               </div>
               
               <div v-if="!isLoggedIn" class="text-center py-8 text-muted-foreground">
@@ -1046,6 +1058,34 @@ https://pd.qq.com/g/m250319e25"
   font-size: 11px;
 }
 
+/* 频道链接 */
+.channel-link {
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+  padding: 0.375rem 0.75rem;
+  background: transparent;
+  border: 1px solid hsl(var(--border));
+  border-radius: 0.375rem;
+  color: hsl(var(--muted-foreground));
+  text-decoration: none;
+  font-size: 0.875rem;
+  font-weight: 500;
+  transition: all 0.2s ease;
+}
+
+.channel-link:hover {
+  background: hsl(var(--primary));
+  color: hsl(var(--primary-foreground));
+  border-color: hsl(var(--primary));
+  transform: translateY(-1px);
+  box-shadow: 0 2px 8px hsl(var(--primary) / 0.3);
+}
+
+.channel-link .link-text {
+  white-space: nowrap;
+}
+
 /* 频道输入框 */
 .channel-textarea {
   width: 100%;
@@ -1222,6 +1262,14 @@ https://pd.qq.com/g/m250319e25"
   
   .search-results-list {
     max-height: 400px;
+  }
+
+  .channel-link .link-text {
+    display: none;
+  }
+  
+  .channel-link {
+    padding: 0.5rem;
   }
 }
 

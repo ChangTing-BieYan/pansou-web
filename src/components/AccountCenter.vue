@@ -149,6 +149,7 @@ const navigateToService = (service: 'qqpd' | 'gying') => {
           :account-count="qqpdAccountCount"
           :enabled="isQQPDEnabled"
           :status-text="qqpdStatusText"
+          external-link="https://pd.qq.com/"
           @manage="navigateToService('qqpd')"
         />
         
@@ -160,6 +161,7 @@ const navigateToService = (service: 'qqpd' | 'gying') => {
           :account-count="gyingAccountCount"
           :enabled="isGyingEnabled"
           :status-text="gyingStatusText"
+          external-link="https://www.gying.net/"
           @manage="navigateToService('gying')"
         />
       </div>

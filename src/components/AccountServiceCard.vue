@@ -11,6 +11,7 @@ interface Props {
   accountCount: number
   enabled: boolean
   statusText?: string
+  externalLink?: string  // 新增：外部链接
 }
 
 const props = defineProps<Props>()
@@ -19,6 +20,14 @@ const props = defineProps<Props>()
 const emit = defineEmits<{
   (e: 'manage'): void
 }>()
+
+// 打开外部链接
+const openExternalLink = (e: MouseEvent) => {
+  if (props.externalLink) {
+    e.stopPropagation()
+    window.open(props.externalLink, '_blank', 'noopener,noreferrer')
+  }
+}
 </script>
 
 <template>
@@ -33,7 +42,19 @@ const emit = defineEmits<{
         <span v-else-if="iconEmoji">{{ iconEmoji }}</span>
       </div>
       <div class="service-info">
-        <h3 class="service-name">{{ name }}</h3>
+        <div class="service-header">
+          <h3 class="service-name">{{ name }}</h3>
+          <button 
+            v-if="externalLink" 
+            @click="openExternalLink"
+            class="external-link-btn"
+            title="访问官网"
+          >
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/>
+            </svg>
+          </button>
+        </div>
         <p class="service-description">{{ description }}</p>
         <div class="service-status">
           <span v-if="accountCount > 0" class="status-active">
@@ -99,11 +120,39 @@ const emit = defineEmits<{
   min-width: 0;
 }
 
+.service-header {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.25rem;
+}
+
 .service-name {
   font-size: 1.125rem;
   font-weight: 600;
-  margin: 0 0 0.25rem 0;
+  margin: 0;
   color: hsl(var(--foreground));
+}
+
+.external-link-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.25rem;
+  background: transparent;
+  border: 1px solid hsl(var(--border));
+  border-radius: 0.375rem;
+  color: hsl(var(--muted-foreground));
+  cursor: pointer;
+  transition: all 0.2s ease;
+  flex-shrink: 0;
+}
+
+.external-link-btn:hover {
+  background: hsl(var(--primary));
+  color: hsl(var(--primary-foreground));
+  border-color: hsl(var(--primary));
+  transform: translateY(-1px);
 }
 
 .service-description {
