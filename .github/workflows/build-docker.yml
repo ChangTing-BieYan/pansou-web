@@ -6,6 +6,10 @@ on:
     tags: [ 'v*' ]
   pull_request:
     branches: [ main ]
+  workflow_run:                # 新增：当同步上游 workflow 完成时触发
+    workflows: ["同步上游（保留前端修改）"]
+    types:
+      - completed
 
 env:
   REGISTRY: ghcr.io
