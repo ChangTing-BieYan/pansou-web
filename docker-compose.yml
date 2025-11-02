@@ -72,8 +72,3 @@ services:
 volumes:
   pansou-data:
     driver: local
-
-# 网络配置（可选）
-# networks:
-#   pansou-network:
-#     driver: bridge
