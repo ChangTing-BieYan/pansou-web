@@ -667,7 +667,7 @@ const copyHashToClipboard = async () => {
                   </div>
                   <div class="flex justify-between">
                     <span class="text-muted-foreground">有效期</span>
-                    <span>{{ status.expires_in_days }} 天</span>
+                    <span class="text-right text-xs">{{ status.expire_time ? formatDateTime(status.expire_time) : '-' }}</span>
                   </div>
                 </div>
                 
