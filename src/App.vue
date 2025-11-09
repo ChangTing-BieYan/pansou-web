@@ -11,6 +11,7 @@ import LoginDialog from '@/components/LoginDialog.vue';
 import QQPDManager from '@/components/QQPDManager.vue';
 import AccountCenter from '@/components/AccountCenter.vue';
 import GyingManager from '@/components/GyingManager.vue';
+import WeiboManager from '@/components/WeiboManager.vue';
 
 // 后端健康状态缓存（应用启动时获取一次）
 const backendHealth = ref<HealthStatus | null>(null);
@@ -46,7 +47,7 @@ const isActivelySearching = ref(false);
 let forceRefreshPending = false;
 
 // 当前页面状态
-const currentPage = ref<'search' | 'status' | 'docs' | 'accounts' | 'qqpd' | 'gying'>('search');
+const currentPage = ref<'search' | 'status' | 'docs' | 'accounts' | 'qqpd' | 'gying' | 'weibo'>('search');
 
 // 登录状态
 const showLogin = ref(false);
@@ -59,9 +60,12 @@ const isQQPDEnabled = ref(false);
 // Gying插件状态
 const isGyingEnabled = ref(false);
 
+// Weibo插件状态
+const isWeiboEnabled = ref(false);
+
 // 检查是否有需要账号管理的服务
 const hasAccountServices = computed(() => {
-  return isQQPDEnabled.value || isGyingEnabled.value;
+  return isQQPDEnabled.value || isGyingEnabled.value || isWeiboEnabled.value;
 });
 
 // 页面切换
@@ -85,12 +89,18 @@ const switchToGying = () => {
   currentPage.value = 'gying';
 };
 
+const switchToWeibo = () => {
+  currentPage.value = 'weibo';
+};
+
 // 从账号中心导航到具体服务
-const handleAccountNavigate = (service: 'qqpd' | 'gying') => {
+const handleAccountNavigate = (service: 'qqpd' | 'gying' | 'weibo') => {
   if (service === 'qqpd') {
     switchToQQPD();
   } else if (service === 'gying') {
     switchToGying();
+  } else if (service === 'weibo') {
+    switchToWeibo();
   }
 };
 
@@ -671,12 +681,42 @@ const checkGyingPlugin = () => {
   }
 };
 
+// 检查Weibo插件是否启用
+const checkWeiboPlugin = () => {
+  try {
+    const backendSupportsWeibo = backendHealth.value?.plugins?.includes('weibo') || false;
+    
+    if (!backendSupportsWeibo) {
+      isWeiboEnabled.value = false;
+      return;
+    }
+    
+    try {
+      const savedPlugins = localStorage.getItem('pansou_plugins');
+      
+      if (savedPlugins === null) {
+        isWeiboEnabled.value = true;
+      } else {
+        const plugins = JSON.parse(savedPlugins);
+        isWeiboEnabled.value = Array.isArray(plugins) && plugins.includes('weibo');
+      }
+    } catch (err) {
+      console.error('读取用户插件配置失败:', err);
+      isWeiboEnabled.value = true;
+    }
+  } catch (error) {
+    console.error('检查Weibo插件失败:', error);
+    isWeiboEnabled.value = false;
+  }
+};
+
 // 监听localStorage变化，当用户配置改变时更新插件状态
 const handleStorageChange = (e: StorageEvent) => {
   // 只关心插件配置的变化
   if (e.key === 'pansou_plugins') {
     checkQQPDPlugin();
     checkGyingPlugin();
+    checkWeiboPlugin();
   }
 };
 
@@ -684,6 +724,7 @@ const handleStorageChange = (e: StorageEvent) => {
 const handleConfigSaved = () => {
   checkQQPDPlugin();
   checkGyingPlugin();
+  checkWeiboPlugin();
 };
 
 // 强制刷新处理
@@ -705,6 +746,7 @@ onMounted(async () => {
   checkAuth();
   checkQQPDPlugin();
   checkGyingPlugin();
+  checkWeiboPlugin();
   
   // 监听事件
   window.addEventListener('auth:required', handleAuthRequired);
@@ -796,7 +838,7 @@ onUnmounted(() => {
             v-if="hasAccountServices"
             @click="switchToAccounts"
             class="nav-button"
-            :class="{ 'active': currentPage === 'accounts' || currentPage === 'qqpd' || currentPage === 'gying' }"
+            :class="{ 'active': currentPage === 'accounts' || currentPage === 'qqpd' || currentPage === 'gying' || currentPage === 'weibo' }"
             title="账号管理"
           >
             <span class="nav-icon">
@@ -897,6 +939,11 @@ onUnmounted(() => {
       <!-- 观影管理页面 -->
       <div v-else-if="currentPage === 'gying'" class="gying-page">
         <GyingManager @back-to-center="switchToAccounts" />
+      </div>
+      
+      <!-- 微博管理页面 -->
+      <div v-else-if="currentPage === 'weibo'" class="weibo-page">
+        <WeiboManager @back-to-center="switchToAccounts" />
       </div>
     </main>
     

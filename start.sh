@@ -150,6 +150,16 @@ fi)
         proxy_buffering off;
     }
 
+    location /weibo/ {
+        proxy_pass http://${PANSOU_HOST}:${PANSOU_PORT}/weibo/;
+        proxy_set_header Host \$host;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto \$scheme;
+        proxy_set_header Referer \$http_referer;
+        proxy_buffering off;
+    }
+
     # 其他API请求 - 代理到Go后端
     location /api/ {
         proxy_pass http://${PANSOU_HOST}:${PANSOU_PORT}/api/;

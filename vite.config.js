@@ -42,6 +42,14 @@ export default defineConfig(({ mode }) => {
         '/qqpd': {
           target: env.VITE_API_BASE_URL || 'http://localhost:8888',
           changeOrigin: true
+        },
+        '/gying': {
+          target: env.VITE_API_BASE_URL || 'http://localhost:8888',
+          changeOrigin: true
+        },
+        '/weibo': {
+          target: env.VITE_API_BASE_URL || 'http://localhost:8888',
+          changeOrigin: true
         }
       }
     }

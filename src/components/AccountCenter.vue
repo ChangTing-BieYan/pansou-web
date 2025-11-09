@@ -3,6 +3,7 @@ import { ref, computed, onMounted } from 'vue'
 import AccountServiceCard from '@/components/AccountServiceCard.vue'
 import QQPDIcon from '@/components/icons/QQPDIcon.vue'
 import GyingIcon from '@/components/icons/GyingIcon.vue'
+import WeiboIcon from '@/components/icons/WeiboIcon.vue'
 import type { HealthStatus } from '@/api'
 
 // 定义Props
@@ -14,7 +15,7 @@ const props = defineProps<Props>()
 
 // 定义事件
 const emit = defineEmits<{
-  (e: 'navigate', page: 'qqpd' | 'gying'): void
+  (e: 'navigate', page: 'qqpd' | 'gying' | 'weibo'): void
 }>()
 
 // QQPD账号状态
@@ -25,6 +26,10 @@ const qqpdAccountCount = computed(() => qqpdAccounts.value.length)
 const gyingAccounts = ref<any[]>([])
 const gyingAccountCount = computed(() => gyingAccounts.value.length)
 
+// Weibo账号状态
+const weiboAccounts = ref<any[]>([])
+const weiboAccountCount = computed(() => weiboAccounts.value.length)
+
 // 检查服务是否启用
 const isQQPDEnabled = computed(() => {
   return props.backendHealth?.plugins?.includes('qqpd') || false
@@ -32,6 +37,10 @@ const isQQPDEnabled = computed(() => {
 
 const isGyingEnabled = computed(() => {
   return props.backendHealth?.plugins?.includes('gying') || false
+})
+
+const isWeiboEnabled = computed(() => {
+  return props.backendHealth?.plugins?.includes('weibo') || false
 })
 
 // 加载账号状态
@@ -47,6 +56,12 @@ const loadAccountsStatus = () => {
     const gyingUsersStr = localStorage.getItem('gying_users')
     if (gyingUsersStr) {
       gyingAccounts.value = JSON.parse(gyingUsersStr)
+    }
+    
+    // 加载Weibo账号
+    const weiboUsersStr = localStorage.getItem('weibo_users')
+    if (weiboUsersStr) {
+      weiboAccounts.value = JSON.parse(weiboUsersStr)
     }
   } catch (error) {
     console.error('加载账号状态失败:', error)
@@ -88,6 +103,21 @@ const gyingStatusText = computed(() => {
   return ''
 })
 
+// 计算Weibo状态文本
+const weiboStatusText = computed(() => {
+  if (weiboAccountCount.value === 0) return ''
+  
+  // 计算总用户ID数
+  let totalUserIds = 0
+  weiboAccounts.value.forEach((account: any) => {
+    if (account.user_ids && Array.isArray(account.user_ids)) {
+      totalUserIds += account.user_ids.length
+    }
+  })
+  
+  return totalUserIds > 0 ? `配置了 ${totalUserIds} 个用户ID` : ''
+})
+
 // 组件挂载时加载状态
 onMounted(() => {
   loadAccountsStatus()
@@ -95,7 +125,7 @@ onMounted(() => {
 
 // 监听localStorage变化
 const handleStorageChange = (e: StorageEvent) => {
-  if (e.key === 'qqpd_users' || e.key === 'gying_users') {
+  if (e.key === 'qqpd_users' || e.key === 'gying_users' || e.key === 'weibo_users') {
     loadAccountsStatus()
   }
 }
@@ -111,7 +141,7 @@ onUnmounted(() => {
 })
 
 // 导航到服务管理页面
-const navigateToService = (service: 'qqpd' | 'gying') => {
+const navigateToService = (service: 'qqpd' | 'gying' | 'weibo') => {
   emit('navigate', service)
 }
 </script>
@@ -127,11 +157,11 @@ const navigateToService = (service: 'qqpd' | 'gying') => {
     <!-- 统计概览 -->
     <div class="stats-overview">
       <div class="stat-card">
-        <div class="stat-value">{{ isQQPDEnabled && isGyingEnabled ? 2 : (isQQPDEnabled || isGyingEnabled ? 1 : 0) }}</div>
+        <div class="stat-value">{{ [isQQPDEnabled, isGyingEnabled, isWeiboEnabled].filter(Boolean).length }}</div>
         <div class="stat-label">可用服务</div>
       </div>
       <div class="stat-card">
-        <div class="stat-value">{{ qqpdAccountCount + gyingAccountCount }}</div>
+        <div class="stat-value">{{ qqpdAccountCount + gyingAccountCount + weiboAccountCount }}</div>
         <div class="stat-label">已登录账号</div>
       </div>
     </div>
@@ -164,15 +194,27 @@ const navigateToService = (service: 'qqpd' | 'gying') => {
           external-link="https://www.gying.net/"
           @manage="navigateToService('gying')"
         />
+        
+        <!-- 微博卡片 -->
+        <AccountServiceCard
+          :icon-component="WeiboIcon"
+          name="微博"
+          description="扫码登录，配置用户ID列表搜索资源"
+          :account-count="weiboAccountCount"
+          :enabled="isWeiboEnabled"
+          :status-text="weiboStatusText"
+          external-link="https://weibo.com/"
+          @manage="navigateToService('weibo')"
+        />
       </div>
       
       <!-- 提示信息 -->
-      <div v-if="!isQQPDEnabled && !isGyingEnabled" class="empty-state">
+      <div v-if="!isQQPDEnabled && !isGyingEnabled && !isWeiboEnabled" class="empty-state">
         <svg class="empty-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4"/>
         </svg>
         <p class="empty-text">后端未启用任何需要登录的服务</p>
-        <p class="empty-hint">请在后端配置中启用 qqpd 或 gying 插件</p>
+        <p class="empty-hint">请在后端配置中启用 qqpd、gying 或 weibo 插件</p>
       </div>
       
       <!-- 占位卡片 -->
