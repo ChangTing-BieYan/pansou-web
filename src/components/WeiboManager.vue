@@ -627,9 +627,21 @@ const copyHashToClipboard = async () => {
               <div class="flex items-center justify-between mb-4">
                 <h3 class="text-lg font-semibold flex items-center gap-2">
                   <span>👤</span>
-                  <span>用户ID管理</span>
+                  <span>微博UID管理</span>
                   <span class="text-sm text-muted-foreground font-normal">({{ status.user_ids?.length || 0 }} 个)</span>
                 </h3>
+                <a 
+                  href="https://github.com/fish2018/pansou/issues/4" 
+                  target="_blank" 
+                  rel="noopener noreferrer"
+                  class="channel-link"
+                  title="查看更多微博UID配置"
+                >
+                  <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/>
+                  </svg>
+                  <span class="link-text">更多UID</span>
+                </a>
               </div>
               
               <div v-if="!isLoggedIn" class="text-center py-8 text-muted-foreground">
