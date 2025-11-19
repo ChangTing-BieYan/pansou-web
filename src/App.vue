@@ -255,44 +255,58 @@ const handleSearchComplete = () => {
   // 只处理UI相关的状态，不影响搜索流程
 };
 
-// 应用关键词过滤
-const applyKeywordFilter = (results: any, filterKeywords: string, filterMode: 'include' | 'exclude') => {
-  if (!results || !filterKeywords.trim()) return results;
+// 应用关键词过滤（后端filter参数已经处理，这里保留作为备用）
+const applyKeywordFilter = (results: any, filterStr: string) => {
+  if (!results || !filterStr.trim()) return results;
   
-  // 将过滤关键词分割成数组（支持空格和逗号分隔）
-  const keywords = filterKeywords.split(/[,\s]+/).filter(k => k.trim()).map(k => k.toLowerCase());
-  if (keywords.length === 0) return results;
-  
-  const filteredResults: any = {};
-  
-  // 遍历每个网盘类型的结果
-  Object.keys(results).forEach(diskType => {
-    const diskResults = results[diskType];
-    if (!Array.isArray(diskResults)) return;
+  try {
+    const filter = JSON.parse(filterStr);
+    const includeKeywords = (filter.include || []).map((k: string) => k.toLowerCase());
+    const excludeKeywords = (filter.exclude || []).map((k: string) => k.toLowerCase());
     
-    // 过滤每个结果项
-    const filtered = diskResults.filter((item: any) => {
-      // merged_by_type 中的数据结构使用 note 字段，而不是 title
-      const note = (item.note || '').toLowerCase();
-      const source = (item.source || '').toLowerCase();
-      const searchText = `${note} ${source}`;
+    if (includeKeywords.length === 0 && excludeKeywords.length === 0) {
+      return results;
+    }
+    
+    const filteredResults: any = {};
+    
+    // 遍历每个网盘类型的结果
+    Object.keys(results).forEach(diskType => {
+      const diskResults = results[diskType];
+      if (!Array.isArray(diskResults)) return;
       
-      if (filterMode === 'include') {
-        // 包含模式：至少包含一个关键词
-        return keywords.some(keyword => searchText.includes(keyword));
-      } else {
-        // 排除模式：不包含任何一个关键词
-        return !keywords.some(keyword => searchText.includes(keyword));
+      // 过滤每个结果项
+      const filtered = diskResults.filter((item: any) => {
+        const note = (item.note || '').toLowerCase();
+        const source = (item.source || '').toLowerCase();
+        const searchText = `${note} ${source}`;
+        
+        // 包含检查 (OR关系)：如果有include，必须至少包含一个
+        if (includeKeywords.length > 0) {
+          const hasInclude = includeKeywords.some(keyword => searchText.includes(keyword));
+          if (!hasInclude) return false;
+        }
+        
+        // 排除检查 (OR关系)：如果有exclude，包含任意一个就排除
+        if (excludeKeywords.length > 0) {
+          const hasExclude = excludeKeywords.some(keyword => searchText.includes(keyword));
+          if (hasExclude) return false;
+        }
+        
+        return true;
+      });
+      
+      // 只保留有结果的网盘类型
+      if (filtered.length > 0) {
+        filteredResults[diskType] = filtered;
       }
     });
     
-    // 只保留有结果的网盘类型
-    if (filtered.length > 0) {
-      filteredResults[diskType] = filtered;
-    }
-  });
-  
-  return filteredResults;
+    return filteredResults;
+  } catch (error) {
+    console.error('过滤参数解析失败:', error);
+    return results;
+  }
 };
 
 // 更新搜索结果
@@ -304,24 +318,11 @@ const updateSearchResults = (response: SearchResponse) => {
   if (response.merged_by_type) {
     let results = { ...response.merged_by_type };
     
-    // 应用过滤（如果有过滤参数）
-    if (lastSearchParams.value) {
-      const filterKeywords = (lastSearchParams.value as any).filter_keywords;
-      const filterMode = (lastSearchParams.value as any).filter_mode || 'include';
-      
-      if (filterKeywords) {
-        results = applyKeywordFilter(results, filterKeywords, filterMode);
-        
-        // 重新计算总数
-        let filteredTotal = 0;
-        Object.values(results).forEach((diskResults: any) => {
-          if (Array.isArray(diskResults)) {
-            filteredTotal += diskResults.length;
-          }
-        });
-        searchResults.total = filteredTotal;
-      }
-    }
+    // 注意：后端已经处理了filter参数，这里不再需要前端过滤
+    // 保留以下代码作为备用，但不执行
+    // if (lastSearchParams.value && (lastSearchParams.value as any).filter) {
+    //   results = applyKeywordFilter(results, (lastSearchParams.value as any).filter);
+    // }
     
     searchResults.mergedResults = results;
   } else {

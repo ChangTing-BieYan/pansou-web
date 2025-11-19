@@ -2,14 +2,15 @@
 import { ref } from 'vue';
 import type { SearchParams } from '@/api';
 import type { HealthStatus } from '@/api';
+import type { FilterConfig } from '@/types';
 import { Button, Input, Icons } from '@/components/ui';
 import FilterIcon from '@/components/icons/FilterIcon.vue';
 
 const keyword = ref('');
 const loading = ref(false);
 const showAdvanced = ref(false);
-const filterKeywords = ref('');
-const filterMode = ref<'include' | 'exclude'>('include');
+const includeKeywords = ref('');
+const excludeKeywords = ref('');
 
 // 接收后端健康状态作为 props
 const props = defineProps<{
@@ -110,10 +111,16 @@ const handleSearch = () => {
     (params as any).cloud_types = userConfig.cloudTypes.join(',');
   }
   
-  // 添加过滤关键词（前端过滤使用）
-  if (filterKeywords.value.trim()) {
-    (params as any).filter_keywords = filterKeywords.value.trim();
-    (params as any).filter_mode = filterMode.value;
+  // 添加过滤配置（使用后端filter参数格式）
+  const filterConfig: FilterConfig = {};
+  if (includeKeywords.value.trim()) {
+    filterConfig.include = includeKeywords.value.split(/[,\s]+/).filter(k => k.trim());
+  }
+  if (excludeKeywords.value.trim()) {
+    filterConfig.exclude = excludeKeywords.value.split(/[,\s]+/).filter(k => k.trim());
+  }
+  if (filterConfig.include || filterConfig.exclude) {
+    (params as any).filter = JSON.stringify(filterConfig);
   }
   
   emit('search', params);
@@ -140,7 +147,7 @@ const handleSearch = () => {
               :class="[
                 'advanced-toggle-left',
                 showAdvanced && 'active',
-                filterKeywords.trim() && 'has-filter'
+                (includeKeywords.trim() || excludeKeywords.trim()) && 'has-filter'
               ]"
               title="高级筛选"
             >
@@ -177,47 +184,50 @@ const handleSearch = () => {
       <Transition name="slide-down">
         <div v-if="showAdvanced" class="advanced-panel">
           <div class="advanced-content">
-            <!-- 过滤模式选择 -->
-            <div class="filter-mode">
-              <label class="mode-label">
-                <input 
-                  v-model="filterMode" 
-                  type="radio" 
-                  value="include"
-                  class="mode-radio"
-                />
-                <span class="mode-text">包含关键词</span>
-              </label>
-              <label class="mode-label">
-                <input 
-                  v-model="filterMode" 
-                  type="radio" 
-                  value="exclude"
-                  class="mode-radio"
-                />
-                <span class="mode-text">排除关键词</span>
-              </label>
-            </div>
-            
-            <!-- 关键词输入 -->
+            <!-- 包含关键词 -->
             <div class="filter-input-group">
               <label class="filter-label">
-                <span class="label-text">过滤关键词</span>
-                <span class="label-hint">多个关键词用空格或英文逗号(,)分隔</span>
+                <span class="label-text">包含关键词</span>
+                <span class="label-hint">结果中至少包含一个关键词 (OR关系)，多个关键词用空格或英文逗号(,)分隔</span>
               </label>
               <input
-                v-model="filterKeywords"
+                v-model="includeKeywords"
                 type="text"
-                :placeholder="filterMode === 'include' ? '例如: 2025 2024 1080P' : '例如: 枪版 CAM TS'"
+                placeholder="高码 hdr 4k"
                 class="filter-input"
                 @keydown.enter="handleSearch"
               />
-              <div v-if="filterKeywords.trim()" class="filter-preview">
-                <span class="preview-label">当前过滤:</span>
+              <div v-if="includeKeywords.trim()" class="filter-preview">
+                <span class="preview-label">包含:</span>
                 <span 
-                  v-for="(word, index) in filterKeywords.split(/[,\s]+/).filter(w => w.trim())" 
+                  v-for="(word, index) in includeKeywords.split(/[,\s]+/).filter(w => w.trim())" 
                   :key="index"
-                  :class="['filter-tag', filterMode]"
+                  class="filter-tag include"
+                >
+                  {{ word }}
+                </span>
+              </div>
+            </div>
+            
+            <!-- 排除关键词 -->
+            <div class="filter-input-group">
+              <label class="filter-label">
+                <span class="label-text">排除关键词</span>
+                <span class="label-hint">结果中包含任意一个关键词就排除 (OR关系)，多个关键词用空格或英文逗号(,)分隔</span>
+              </label>
+              <input
+                v-model="excludeKeywords"
+                type="text"
+                placeholder="预告 花絮 枪版 CAM TS"
+                class="filter-input"
+                @keydown.enter="handleSearch"
+              />
+              <div v-if="excludeKeywords.trim()" class="filter-preview">
+                <span class="preview-label">排除:</span>
+                <span 
+                  v-for="(word, index) in excludeKeywords.split(/[,\s]+/).filter(w => w.trim())" 
+                  :key="index"
+                  class="filter-tag exclude"
                 >
                   {{ word }}
                 </span>

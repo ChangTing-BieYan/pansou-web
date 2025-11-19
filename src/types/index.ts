@@ -67,5 +67,11 @@ export interface AuthStatus {
   authenticated: boolean;
 }
 
+// 过滤配置类型
+export interface FilterConfig {
+  include?: string[];
+  exclude?: string[];
+}
+
 // 导出QQPD相关类型
 export * from './qqpd' 

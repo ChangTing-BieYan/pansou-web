@@ -163,6 +163,14 @@
               <textarea v-model="searchForm.ext" class="form-textarea" placeholder='{"title_en":"English Title","is_all":true}'></textarea>
             </div>
 
+            <div class="form-group">
+              <label>过滤配置 (JSON):</label>
+              <textarea v-model="searchForm.filter" class="form-textarea" placeholder='{"include":["高码","hdr"],"exclude":["预告","抢先"]}'></textarea>
+              <p class="filter-hint">
+                💡 <strong>include</strong>: 结果中至少包含一个关键词 (OR关系) | <strong>exclude</strong>: 结果中包含任意一个关键词就排除 (OR关系)
+              </p>
+            </div>
+
             <div class="form-row">
               <div class="form-group">
                 <label>并发数:</label>
@@ -580,7 +588,8 @@ const searchParams = [
   { name: 'src', type: 'string', required: false, description: '数据来源：all/tg/plugin，默认all' },
   { name: 'plugins', type: 'string[]', required: false, description: '指定搜索的插件列表' },
   { name: 'cloud_types', type: 'string[]', required: false, description: '指定返回的网盘类型列表' },
-  { name: 'ext', type: 'object', required: false, description: '扩展参数，传递给插件的自定义参数' }
+  { name: 'ext', type: 'object', required: false, description: '扩展参数，传递给插件的自定义参数' },
+  { name: 'filter', type: 'object', required: false, description: '过滤配置，格式: {"include":["高码","hdr"],"exclude":["预告","抢先"]}\u3002include为包含关键词列表(OR关系)，exclude为排除关键词列表(OR关系)' }
 ];
 
 // 搜索API响应字段
@@ -649,7 +658,8 @@ const searchForm = ref({
   res: 'merge',
   src: 'all',
   cloud_types: '',
-  ext: ''
+  ext: '',
+  filter: ''
 });
 
 // 加载状态
@@ -732,6 +742,13 @@ const generateSearchRequest = () => {
         // 忽略JSON解析错误
       }
     }
+    if (searchForm.value.filter) {
+      try {
+        payload.filter = JSON.parse(searchForm.value.filter);
+      } catch (e) {
+        // 忽略JSON解析错误
+      }
+    }
 
     return `POST /api/search
 ${authHeader}Content-Type: application/json
@@ -749,6 +766,7 @@ ${JSON.stringify(payload, null, 2)}`;
     if (searchForm.value.src !== 'all') params.append('src', searchForm.value.src);
     if (searchForm.value.cloud_types) params.append('cloud_types', searchForm.value.cloud_types);
     if (searchForm.value.ext) params.append('ext', searchForm.value.ext);
+    if (searchForm.value.filter) params.append('filter', searchForm.value.filter);
 
     return `GET /api/search?${params.toString()}
 ${authHeader}`;
@@ -800,6 +818,14 @@ const testSearchAPI = async () => {
           return;
         }
       }
+      if (searchForm.value.filter) {
+        try {
+          payload.filter = JSON.parse(searchForm.value.filter);
+        } catch (e) {
+          alert('过滤配置JSON格式错误');
+          return;
+        }
+      }
 
       response = await axios.post('/api/search', payload, { headers });
     } else {
@@ -814,6 +840,7 @@ const testSearchAPI = async () => {
       if (searchForm.value.src !== 'all') params.append('src', searchForm.value.src);
       if (searchForm.value.cloud_types) params.append('cloud_types', searchForm.value.cloud_types);
       if (searchForm.value.ext) params.append('ext', searchForm.value.ext);
+      if (searchForm.value.filter) params.append('filter', searchForm.value.filter);
 
       response = await axios.get(`/api/search?${params.toString()}`, { headers });
     }
@@ -880,7 +907,8 @@ const clearSearchForm = () => {
     res: 'merge',
     src: 'all',
     cloud_types: '',
-    ext: ''
+    ext: '',
+    filter: ''
   };
   searchResponse.value = null;
 };
@@ -1835,6 +1863,19 @@ const copyToClipboard = async (text: string) => {
   display: flex;
   align-items: center;
   gap: 0.5rem;
+}
+
+/* filter hint 样式 */
+.filter-hint {
+  margin-top: 0.5rem;
+  font-size: 0.875rem;
+  color: hsl(var(--muted-foreground));
+  line-height: 1.5;
+}
+
+.filter-hint strong {
+  color: #2563eb;
+  font-weight: 600;
 }
 
 /* 响应式设计 */
