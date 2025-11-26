@@ -19,7 +19,7 @@ services:
       - LOG_PATH=/app/data/logs
       
       # 插件配置（镜像已包含推荐插件，如需自定义可取消注释并修改）
-      - ENABLED_PLUGINS=labi,zhizhen,shandian,duoduo,muou,wanou,hunhepan,jikepan,panwiki,pansearch,panta,qupansou,hdr4k,pan666,susu,thepiratebay,xuexizhinan,panyq,ouge,huban,cyg,erxiao,miaoso,fox4k,pianku,clmao,wuji,cldi,xiaozhang,libvio,leijing,xb6v,xys,ddys,hdmoli,yuhuage,u3c3,javdb,clxiong,jutoushe,sdso,xiaoji,xdyh,haisou,bixin,djgou,nyaa,xinjuc,aikanzy,qupanshe,xdpan,discourse,yunsou,ahhhhfs,nsgame,quark4k,quarksoo,sousou,ash,feikuai,kkmao,alupan,ypfxw,mikuclub,daishudj
+      - ENABLED_PLUGINS=labi,zhizhen,shandian,duoduo,muou,wanou,gying
       
       # Telegram频道配置（镜像已包含这些默认频道，如需自定义可取消注释）
       - CHANNELS=tgsearchers3,tianyirigeng,tyypzhpd,cloudtianyi,tianyifc,ydypzyfx,yunpan139,ucquark,ucwpz,yyunpanuc,zyzhpd123,xx123pan,yp123pan,yggpan,zyfb123
