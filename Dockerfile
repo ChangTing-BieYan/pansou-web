@@ -15,7 +15,7 @@ ENV CACHE_PATH=/app/data/cache
 ENV LOG_PATH=/app/data/logs
 
 # 默认插件配置
-ENV ENABLED_PLUGINS=labi,zhizhen,shandian,duoduo,wanou,gying
+ENV ENABLED_PLUGINS=labi,zhizhen,shandian,duoduo,muou,wanou,hunhepan,jikepan,panwiki,pansearch,panta,qupansou,hdr4k,pan666,susu,xuexizhinan,panyq,ouge,huban,cyg,erxiao,miaoso,fox4k,pianku,clmao,wuji,cldi,xiaozhang,libvio,leijing,xb6v,xys,ddys,hdmoli,clxiong,jutoushe,sdso,xiaoji,xdyh,haisou,bixin,djgou,nyaa,xinjuc,aikanzy,qupanshe,xdpan,discourse,yunsou,ahhhhfs,nsgame,quark4k,quarksoo,sousou,ash,feikuai,kkmao,alupan,ypfxw,mikuclub,daishudj,dyyj,meitizy,jsnoteclub,mizixing,lou1,yiove
 
 # 默认Telegram频道配置
 ENV CHANNELS=tgsearchers3,tianyirigeng,tyypzhpd,cloudtianyi,tianyifc,ydypzyfx,yunpan139,ucquark,ucwpz,yyunpanuc,zyzhpd123,xx123pan,yp123pan,yggpan,zyfb123
