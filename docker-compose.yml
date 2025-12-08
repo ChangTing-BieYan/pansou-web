@@ -1,4 +1,4 @@
-version: '3.8'
+version: '3.3'
 
 services:
   pansou:
@@ -7,7 +7,7 @@ services:
     labels:
       - "autoheal=true"  # 标记此容器允许被autoheal重启
     ports:
-      - "8081:80"
+      - "805:80"
     environment:
       # 基础配置
       - DOMAIN=localhost
@@ -49,12 +49,6 @@ services:
       # 如果需要从宿主机挂载SSL证书，可以使用：
       # - ./ssl:/app/data/ssl
     restart: unless-stopped
-    healthcheck:
-      test: ["CMD", "/app/healthcheck.sh"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 40s
 
   # 自动健康检查和重启服务（容器级别监控）
   autoheal:
