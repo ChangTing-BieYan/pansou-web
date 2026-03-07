@@ -5,6 +5,10 @@ on:
   schedule:
     - cron: "0 */6 * * *" # 每 6 小时触发一次
 
+permissions:
+  contents: write
+  workflows: write
+
 jobs:
   sync-upstream:
     runs-on: ubuntu-latest
