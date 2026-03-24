@@ -1,9 +1,9 @@
 name: 同步上游（保留前端修改）
 
 on:
-  workflow_dispatch:      # 手动触发
+  workflow_dispatch:
   schedule:
-    - cron: "0 */6 * * *" # 每 6 小时触发一次
+    - cron: "0 */6 * * *"
 
 permissions:
   contents: write
@@ -11,6 +11,7 @@ permissions:
 jobs:
   sync-upstream:
     runs-on: ubuntu-latest
+
     steps:
       - name: 检出仓库
         uses: actions/checkout@v4
@@ -28,89 +29,83 @@ jobs:
           git fetch upstream main
 
       - name: 检查上游是否有新提交
-        id: check
         run: |
           LOCAL=$(git rev-parse HEAD)
           UPSTREAM=$(git rev-parse FETCH_HEAD)
           echo "LOCAL=$LOCAL"
           echo "UPSTREAM=$UPSTREAM"
+
           if git merge-base --is-ancestor $UPSTREAM $LOCAL; then
-            echo "✅ 上游提交已包含在本地，无需同步"
+            echo "✅ 无需同步"
             exit 0
           else
-            echo "🔄 上游有新提交"
+            echo "🔄 检测到上游更新"
           fi
 
       - name: 保存本地修改
         run: |
           mkdir -p /tmp/mychanges
-          cp Dockerfile /tmp/mychanges/ || true
-          cp docker-compose.yml /tmp/mychanges/ || true
-          cp build-docker.yml /tmp/mychanges/ || true
+          cp Dockerfile /tmp/mychanges/ 2>/dev/null || true
+          cp docker-compose.yml /tmp/mychanges/ 2>/dev/null || true
+          cp build-docker.yml /tmp/mychanges/ 2>/dev/null || true
 
       - name: 合并上游
         run: |
           git checkout main
-          git merge upstream/main -X theirs --no-edit || true
+          git merge upstream/main --no-edit || true
 
-      - name: 保留本地 CHANNELS 与 ENABLED_PLUGINS
+      # ❗关键：不允许上游覆盖你的 workflow
+      - name: 恢复本地 workflow（防止权限报错）
         run: |
-          echo "🧩 检查并保留本地 CHANNELS 与 ENABLED_PLUGINS"
+          git checkout HEAD -- .github/workflows || true
 
-          # ============ 处理 docker-compose.yml ============
+      - name: 保留 CHANNELS / ENABLED_PLUGINS
+        run: |
+          echo "处理 docker-compose.yml"
+
           if [ -f docker-compose.yml ] && [ -f /tmp/mychanges/docker-compose.yml ]; then
             LOCAL_CHANNELS=$(grep -E '^\s*- CHANNELS=' /tmp/mychanges/docker-compose.yml || true)
             LOCAL_PLUGINS=$(grep -E '^\s*- ENABLED_PLUGINS=' /tmp/mychanges/docker-compose.yml || true)
-            
-            grep -v -E '^\s*- (CHANNELS|ENABLED_PLUGINS)=' docker-compose.yml > /tmp/upstream_clean.yml
-            grep -v -E '^\s*- (CHANNELS|ENABLED_PLUGINS)=' /tmp/mychanges/docker-compose.yml > /tmp/local_clean.yml
 
-            if cmp -s /tmp/upstream_clean.yml /tmp/local_clean.yml; then
-              echo "✅ 上游只修改了 CHANNELS 或 ENABLED_PLUGINS，不合并 docker-compose.yml"
+            grep -v -E '^\s*- (CHANNELS|ENABLED_PLUGINS)=' docker-compose.yml > /tmp/up.yml
+            grep -v -E '^\s*- (CHANNELS|ENABLED_PLUGINS)=' /tmp/mychanges/docker-compose.yml > /tmp/local.yml
+
+            if cmp -s /tmp/up.yml /tmp/local.yml; then
               cp /tmp/mychanges/docker-compose.yml docker-compose.yml
             else
-              echo "🔄 上游修改了其他内容，合并并恢复本地 CHANNELS 与 ENABLED_PLUGINS"
-              if [ -n "$LOCAL_CHANNELS" ]; then
-                sed -i "/- CHANNELS=/c\\$LOCAL_CHANNELS" docker-compose.yml
-              fi
-              if [ -n "$LOCAL_PLUGINS" ]; then
-                sed -i "/- ENABLED_PLUGINS=/c\\$LOCAL_PLUGINS" docker-compose.yml
-              fi
+              [ -n "$LOCAL_CHANNELS" ] && sed -i "/- CHANNELS=/c\\$LOCAL_CHANNELS" docker-compose.yml
+              [ -n "$LOCAL_PLUGINS" ] && sed -i "/- ENABLED_PLUGINS=/c\\$LOCAL_PLUGINS" docker-compose.yml
             fi
           fi
 
-          # ============ 处理 Dockerfile ============
+          echo "处理 Dockerfile"
+
           if [ -f Dockerfile ] && [ -f /tmp/mychanges/Dockerfile ]; then
             LOCAL_CHANNELS=$(grep '^ENV CHANNELS=' /tmp/mychanges/Dockerfile || true)
             LOCAL_PLUGINS=$(grep '^ENV ENABLED_PLUGINS=' /tmp/mychanges/Dockerfile || true)
 
-            grep -v -E '^ENV (CHANNELS|ENABLED_PLUGINS)=' Dockerfile > /tmp/upstream_clean_dockerfile
-            grep -v -E '^ENV (CHANNELS|ENABLED_PLUGINS)=' /tmp/mychanges/Dockerfile > /tmp/local_clean_dockerfile
+            grep -v -E '^ENV (CHANNELS|ENABLED_PLUGINS)=' Dockerfile > /tmp/up_docker
+            grep -v -E '^ENV (CHANNELS|ENABLED_PLUGINS)=' /tmp/mychanges/Dockerfile > /tmp/local_docker
 
-            if cmp -s /tmp/upstream_clean_dockerfile /tmp/local_clean_dockerfile; then
-              echo "✅ 上游只修改了 CHANNELS 或 ENABLED_PLUGINS，不合并 Dockerfile"
+            if cmp -s /tmp/up_docker /tmp/local_docker; then
               cp /tmp/mychanges/Dockerfile Dockerfile
             else
-              echo "🔄 上游修改了其他内容，合并并恢复本地 CHANNELS 与 ENABLED_PLUGINS"
-              if [ -n "$LOCAL_CHANNELS" ]; then
-                sed -i "/^ENV CHANNELS=/c\\$LOCAL_CHANNELS" Dockerfile
-              fi
-              if [ -n "$LOCAL_PLUGINS" ]; then
-                sed -i "/^ENV ENABLED_PLUGINS=/c\\$LOCAL_PLUGINS" Dockerfile
-              fi
+              [ -n "$LOCAL_CHANNELS" ] && sed -i "/^ENV CHANNELS=/c\\$LOCAL_CHANNELS" Dockerfile
+              [ -n "$LOCAL_PLUGINS" ] && sed -i "/^ENV ENABLED_PLUGINS=/c\\$LOCAL_PLUGINS" Dockerfile
             fi
           fi
 
-      - name: 恢复其他本地修改
+      - name: 恢复其他本地文件
         run: |
-          cp /tmp/mychanges/build-docker.yml ./ || true
+          cp /tmp/mychanges/build-docker.yml ./ 2>/dev/null || true
 
       - name: 提交并推送
         run: |
-         git add .
+          git add .
 
-         # ❗关键：禁止提交 workflow 文件
-         git restore --staged .github/workflows || true
+          # ❗核心：彻底禁止 workflow 被提交
+          git reset HEAD .github/workflows || true
+          git checkout -- .github/workflows || true
 
-         git diff --cached --quiet || git commit -m "同步上游"
-         git push origin main
+          git diff --cached --quiet || git commit -m "🔄 同步上游"
+          git push origin main
