@@ -1,6 +1,6 @@
 name: 同步上游（保留前端修改）
 
-于:
+on:
   workflow_dispatch:      # 手动触发
   schedule:
     - cron: "0 */6 * * *" # 每 6 小时触发一次
