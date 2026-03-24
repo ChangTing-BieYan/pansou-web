@@ -107,6 +107,10 @@ jobs:
 
       - name: 提交并推送
         run: |
-          git add .
-          git diff --cached --quiet || git commit -m "🔄 同步上游并保留自定义 CHANNELS/ENABLED_PLUGINS"
-          git push origin main
+         git add .
+
+         # ❗关键：禁止提交 workflow 文件
+         git restore --staged .github/workflows || true
+
+         git diff --cached --quiet || git commit -m "同步上游"
+         git push origin main
