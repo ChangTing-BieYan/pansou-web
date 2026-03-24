@@ -14,7 +14,7 @@ export interface GyingStatus {
   hash: string
   logged_in: boolean
   status: 'pending' | 'active' | 'expired'
-  username_masked: string
+  username: string
   login_time: string
   expire_time: string
   expires_in_days: number
@@ -25,11 +25,18 @@ export interface GyingStatusResponse extends GyingBaseResponse {
   data: GyingStatus
 }
 
+// 站点配置响应
+export interface GyingConfigResponse extends GyingBaseResponse {
+  data: {
+    base_url: string
+  }
+}
+
 // 登录响应
 export interface GyingLoginResponse extends GyingBaseResponse {
   data: {
     status: string
-    username_masked: string
+    username: string
   }
 }
 
@@ -59,4 +66,3 @@ export interface GyingLogoutResponse extends GyingBaseResponse {
     status: string
   }
 }
-

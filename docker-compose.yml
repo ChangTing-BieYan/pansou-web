@@ -19,10 +19,17 @@ services:
       - LOG_PATH=/app/data/logs
       
       # 插件配置（镜像已包含推荐插件，如需自定义可取消注释并修改）
+<<<<<<< HEAD
       - ENABLED_PLUGINS=labi,zhizhen,shandian,duoduo,muou,wanou,gying
       
       # Telegram频道配置（镜像已包含这些默认频道，如需自定义可取消注释）
       - CHANNELS=tgsearchers3,tianyirigeng,tyypzhpd,cloudtianyi,tianyifc,ydypzyfx,yunpan139,ucquark,ucwpz,yyunpanuc,zyzhpd123,xx123pan,yp123pan,yggpan,zyfb123
+=======
+      - ENABLED_PLUGINS=labi,zhizhen,shandian,duoduo,muou,wanou,gying
+      
+      # Telegram频道配置（镜像已包含这些默认频道，如需自定义可取消注释）
+      - CHANNELS=tgsearchers3,tianyirigeng,tyypzhpd,cloudtianyi,tianyifc,ydypzyfx,yunpan139,ucquark,ucwpz,yyunpanuc,zyzhpd123,xx123pan,yp123pan,yggpan,zyfb123
+>>>>>>> upstream/main
       
       # 代理配置（可选）
       # - PROXY=socks5://xxx.xxx.xxx.xxx:7897

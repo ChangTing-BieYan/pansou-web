@@ -1,10 +1,15 @@
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
 import AccountServiceCard from '@/components/AccountServiceCard.vue'
 import QQPDIcon from '@/components/icons/QQPDIcon.vue'
 import GyingIcon from '@/components/icons/GyingIcon.vue'
 import WeiboIcon from '@/components/icons/WeiboIcon.vue'
 import type { HealthStatus } from '@/api'
+import {
+  DEFAULT_GYING_BASE_URL,
+  GYING_BASE_URL_STORAGE_KEY,
+  getStoredGyingBaseURL
+} from '@/utils/gying'
 
 // 定义Props
 interface Props {
@@ -25,6 +30,7 @@ const qqpdAccountCount = computed(() => qqpdAccounts.value.length)
 // Gying账号状态  
 const gyingAccounts = ref<any[]>([])
 const gyingAccountCount = computed(() => gyingAccounts.value.length)
+const gyingBaseURL = ref(DEFAULT_GYING_BASE_URL)
 
 // Weibo账号状态
 const weiboAccounts = ref<any[]>([])
@@ -48,23 +54,19 @@ const loadAccountsStatus = () => {
   try {
     // 加载QQPD账号
     const qqpdUsersStr = localStorage.getItem('qqpd_users')
-    if (qqpdUsersStr) {
-      qqpdAccounts.value = JSON.parse(qqpdUsersStr)
-    }
+    qqpdAccounts.value = qqpdUsersStr ? JSON.parse(qqpdUsersStr) : []
     
     // 加载Gying账号
     const gyingUsersStr = localStorage.getItem('gying_users')
-    if (gyingUsersStr) {
-      gyingAccounts.value = JSON.parse(gyingUsersStr)
-    }
+    gyingAccounts.value = gyingUsersStr ? JSON.parse(gyingUsersStr) : []
+    gyingBaseURL.value = getStoredGyingBaseURL()
     
     // 加载Weibo账号
     const weiboUsersStr = localStorage.getItem('weibo_users')
-    if (weiboUsersStr) {
-      weiboAccounts.value = JSON.parse(weiboUsersStr)
-    }
+    weiboAccounts.value = weiboUsersStr ? JSON.parse(weiboUsersStr) : []
   } catch (error) {
     console.error('加载账号状态失败:', error)
+    gyingBaseURL.value = DEFAULT_GYING_BASE_URL
   }
 }
 
@@ -118,24 +120,23 @@ const weiboStatusText = computed(() => {
   return totalUserIds > 0 ? `配置了 ${totalUserIds} 个用户ID` : ''
 })
 
-// 组件挂载时加载状态
-onMounted(() => {
-  loadAccountsStatus()
-})
-
 // 监听localStorage变化
 const handleStorageChange = (e: StorageEvent) => {
-  if (e.key === 'qqpd_users' || e.key === 'gying_users' || e.key === 'weibo_users') {
+  if (
+    e.key === 'qqpd_users' ||
+    e.key === 'gying_users' ||
+    e.key === 'weibo_users' ||
+    e.key === GYING_BASE_URL_STORAGE_KEY
+  ) {
     loadAccountsStatus()
   }
 }
 
 onMounted(() => {
+  loadAccountsStatus()
   window.addEventListener('storage', handleStorageChange)
 })
 
-// 组件卸载时移除监听
-import { onUnmounted } from 'vue'
 onUnmounted(() => {
   window.removeEventListener('storage', handleStorageChange)
 })
@@ -191,7 +192,7 @@ const navigateToService = (service: 'qqpd' | 'gying' | 'weibo') => {
           :account-count="gyingAccountCount"
           :enabled="isGyingEnabled"
           :status-text="gyingStatusText"
-          external-link="https://www.gying.net/"
+          :external-link="gyingBaseURL"
           @manage="navigateToService('gying')"
         />
         
@@ -405,4 +406,3 @@ const navigateToService = (service: 'qqpd' | 'gying' | 'weibo') => {
   }
 }
 </style>
-

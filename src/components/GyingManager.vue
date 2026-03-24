@@ -1,10 +1,15 @@
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import * as gyingApi from '@/api/gying'
 import type { GyingStatus, GyingSearchResult } from '@/types/gying'
 import Button from '@/components/ui/Button.vue'
 import Card from '@/components/ui/Card.vue'
 import Input from '@/components/ui/Input.vue'
+import {
+  DEFAULT_GYING_BASE_URL,
+  getStoredGyingBaseURL,
+  saveStoredGyingBaseURL
+} from '@/utils/gying'
 
 // 定义事件
 const emit = defineEmits<{
@@ -18,20 +23,33 @@ const emit = defineEmits<{
 interface SavedUser {
   username: string
   hash: string
-  username_masked: string
   last_login: string
 }
 
 const savedUsers = ref<SavedUser[]>([])
 const currentView = ref<'list' | 'add' | 'manage'>('list')
 const selectedUser = ref<SavedUser | null>(null)
+const currentBaseURL = ref(getStoredGyingBaseURL())
+const baseURLInput = ref(getStoredGyingBaseURL())
+const savingBaseURL = ref(false)
+const isEditingBaseURL = ref(false)
 
 // 从localStorage加载用户列表
 const loadSavedUsers = () => {
   const stored = localStorage.getItem('gying_users')
   if (stored) {
     try {
-      savedUsers.value = JSON.parse(stored)
+      const parsed = JSON.parse(stored)
+      savedUsers.value = Array.isArray(parsed)
+        ? parsed
+            .map((item: any) => ({
+              username: typeof item?.username === 'string' ? item.username : '',
+              hash: typeof item?.hash === 'string' ? item.hash : '',
+              last_login: typeof item?.last_login === 'string' ? item.last_login : ''
+            }))
+            .filter((item: SavedUser) => item.hash)
+        : []
+      localStorage.setItem('gying_users', JSON.stringify(savedUsers.value))
     } catch (e) {
       savedUsers.value = []
     }
@@ -50,12 +68,18 @@ const saveSavedUsers = () => {
   window.dispatchEvent(new StorageEvent('storage', { key: 'gying_users' }))
 }
 
+const syncStoredBaseURL = (baseURL: string) => {
+  const normalizedBaseURL = baseURL || DEFAULT_GYING_BASE_URL
+  currentBaseURL.value = normalizedBaseURL
+  baseURLInput.value = normalizedBaseURL
+  saveStoredGyingBaseURL(normalizedBaseURL)
+}
+
 // 添加新用户到列表
-const addUserToList = (username: string, hash: string, usernameMasked: string) => {
+const addUserToList = (username: string, hash: string) => {
   const user: SavedUser = {
-    username: username,
-    hash: hash,
-    username_masked: usernameMasked,
+    username,
+    hash,
     last_login: new Date().toISOString()
   }
   
@@ -97,16 +121,15 @@ const handleAddUser = async () => {
     // 切换到管理界面
     selectedUser.value = {
       username: username.value.trim(),
-      hash: hash,
-      username_masked: '', // 登录成功后更新
+      hash,
       last_login: new Date().toISOString()
     }
     
     currentHash.value = hash
     currentView.value = 'manage'
     
-    // 加载状态
-    await loadStatus()
+    // 加载状态和站点配置
+    await loadManageContext()
   } catch (error) {
     console.error('获取hash失败:', error)
     showAlertMessage('获取hash失败', 'error')
@@ -123,7 +146,7 @@ const handleSelectUser = (user: SavedUser) => {
   selectedUser.value = user
   currentHash.value = user.hash
   currentView.value = 'manage'
-  loadStatus()
+  void loadManageContext()
 }
 
 const handleBackToList = () => {
@@ -133,11 +156,15 @@ const handleBackToList = () => {
   username.value = ''
   loginUsername.value = ''
   loginPassword.value = ''
+  searchKeyword.value = ''
+  searchResults.value = []
+  baseURLInput.value = currentBaseURL.value
 }
 
 const handleShowAddForm = () => {
   currentView.value = 'add'
   username.value = ''
+  baseURLInput.value = currentBaseURL.value
 }
 
 // ============================================================
@@ -150,7 +177,7 @@ const status = ref<GyingStatus>({
   hash: '',
   logged_in: false,
   status: 'pending',
-  username_masked: '',
+  username: '',
   login_time: '',
   expire_time: '',
   expires_in_days: 0
@@ -173,12 +200,16 @@ const loggingIn = ref(false)
 // 计算属性
 // ============================================================
 
-const usernameFirstChar = computed(() => {
-  return status.value.username_masked?.[0] || selectedUser.value?.username?.[0] || 'G'
-})
-
 const isLoggedIn = computed(() => {
   return status.value.logged_in && status.value.status === 'active'
+})
+
+const hasCurrentBaseURL = computed(() => {
+  return Boolean(currentBaseURL.value.trim())
+})
+
+const showBaseURLEditor = computed(() => {
+  return isEditingBaseURL.value || !hasCurrentBaseURL.value
 })
 
 // ============================================================
@@ -187,6 +218,11 @@ const isLoggedIn = computed(() => {
 
 onMounted(() => {
   loadSavedUsers()
+
+  const firstUserHash = savedUsers.value[0]?.hash
+  if (firstUserHash) {
+    void loadConfig(firstUserHash)
+  }
 })
 
 // ============================================================
@@ -202,14 +238,13 @@ const loadStatus = async () => {
     if (response.success && response.data) {
       status.value = response.data
       
-      // 如果登录成功，更新用户列表中的username_masked
-      if (response.data.logged_in && response.data.username_masked && selectedUser.value) {
-        selectedUser.value.username_masked = response.data.username_masked
+      // 如果登录成功，使用后端返回的用户名更新本地列表
+      if (response.data.logged_in && response.data.username && selectedUser.value) {
+        selectedUser.value.username = response.data.username
         selectedUser.value.last_login = new Date().toISOString()
         addUserToList(
           selectedUser.value.username,
-          selectedUser.value.hash,
-          response.data.username_masked
+          selectedUser.value.hash
         )
       }
     }
@@ -218,9 +253,77 @@ const loadStatus = async () => {
   }
 }
 
+const loadConfig = async (hash: string = currentHash.value) => {
+  if (!hash) return
+
+  try {
+    const response = await gyingApi.getConfig(hash)
+
+    if (response.success && response.data) {
+      syncStoredBaseURL(response.data.base_url || DEFAULT_GYING_BASE_URL)
+    }
+  } catch (error) {
+    console.error('获取站点配置失败:', error)
+  }
+}
+
+const loadManageContext = async () => {
+  if (!currentHash.value) return
+
+  await Promise.all([
+    loadStatus(),
+    loadConfig(currentHash.value)
+  ])
+}
+
 // ============================================================
 // 登录管理
 // ============================================================
+
+const handleSaveBaseURL = async () => {
+  if (!currentHash.value) return
+
+  const nextBaseURL = baseURLInput.value.trim()
+  if (!nextBaseURL) {
+    showAlertMessage('请输入站点地址', 'error')
+    return
+  }
+
+  savingBaseURL.value = true
+
+  try {
+    const response = await gyingApi.updateConfig(currentHash.value, nextBaseURL)
+
+    if (response.success && response.data) {
+      syncStoredBaseURL(response.data.base_url || DEFAULT_GYING_BASE_URL)
+      isEditingBaseURL.value = false
+      searchResults.value = []
+      showAlertMessage(response.message || '站点地址已保存', 'success')
+      await loadStatus()
+    } else {
+      showAlertMessage(response.message || '保存站点地址失败', 'error')
+    }
+  } catch (error: any) {
+    console.error('保存站点配置失败:', error)
+    const message = error.response?.data?.message || '保存站点地址失败'
+    showAlertMessage(message, 'error')
+  } finally {
+    savingBaseURL.value = false
+  }
+}
+
+const handleToggleBaseURLEdit = () => {
+  if (savingBaseURL.value) return
+
+  if (isEditingBaseURL.value) {
+    baseURLInput.value = currentBaseURL.value
+    isEditingBaseURL.value = false
+    return
+  }
+
+  baseURLInput.value = currentBaseURL.value
+  isEditingBaseURL.value = true
+}
 
 const handleLogin = async () => {
   if (!currentHash.value) return
@@ -278,7 +381,7 @@ const handleLogout = async () => {
 const handleDeleteAccount = () => {
   if (!selectedUser.value) return
   
-  if (confirm(`确定要删除账号 ${selectedUser.value.username_masked || selectedUser.value.username} 吗？\n\n这将删除本地保存的配置信息。`)) {
+  if (confirm(`确定要删除账号 ${selectedUser.value.username} 吗？\n\n这将删除本地保存的配置信息。`)) {
     removeUser(selectedUser.value.hash)
     handleBackToList()
     showAlertMessage('账号已删除', 'success')
@@ -435,8 +538,8 @@ const copyHashToClipboard = async () => {
           <div class="p-6">
             <div class="flex items-center gap-4 mb-4">
               <div class="w-12 h-12 rounded-full bg-gradient-to-br from-purple-500 to-pink-600 flex items-center justify-center text-white text-xl font-bold">
-                <span v-if="user.username_masked || user.username">
-                  {{ user.username_masked?.[0] || user.username?.[0] || 'G' }}
+                <span v-if="user.username">
+                  {{ user.username?.[0] || 'G' }}
                 </span>
                 <svg v-else viewBox="0 0 24 24" fill="none" stroke="currentColor" class="w-6 h-6">
                   <rect x="2" y="3" width="20" height="18" rx="2" stroke-width="2"/>
@@ -450,7 +553,7 @@ const copyHashToClipboard = async () => {
                 </svg>
               </div>
               <div class="flex-1">
-                <div class="font-medium">{{ user.username_masked || '未登录' }}</div>
+                <div class="font-medium">{{ user.username || '未登录' }}</div>
                 <div class="text-xs text-muted-foreground">
                   {{ user.last_login ? '最近登录: ' + formatDateTime(user.last_login) : '用户: ' + user.username }}
                 </div>
@@ -525,7 +628,7 @@ const copyHashToClipboard = async () => {
                   class="text-center text-lg"
                 />
                 <p class="text-xs text-muted-foreground mt-2">
-                  系统会生成专属hash保护你的隐私，用户名不会被存储
+                  系统会生成专属hash保护你的隐私
                 </p>
               </div>
               
@@ -573,8 +676,63 @@ const copyHashToClipboard = async () => {
       </div>
       
       <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <!-- 左侧：登录状态 -->
+        <!-- 左侧：站点配置 + 登录状态 -->
         <div class="space-y-6 lg:col-span-1">
+          <!-- 站点配置 -->
+          <Card>
+            <div class="p-6 space-y-4">
+              <h3 class="text-lg font-semibold flex items-center gap-2">
+                <span>🌐</span>
+                <span>观影站点</span>
+              </h3>
+
+              <div class="rounded-xl border border-border bg-muted/30 p-4">
+                <div class="site-header-row">
+                  <div class="text-sm text-muted-foreground">当前站点</div>
+                  <button
+                    v-if="hasCurrentBaseURL"
+                    type="button"
+                    class="site-edit-button"
+                    :disabled="savingBaseURL"
+                    @click="handleToggleBaseURLEdit"
+                  >
+                    {{ isEditingBaseURL ? '取消' : '编辑' }}
+                  </button>
+                </div>
+                <a
+                  :href="currentBaseURL"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  class="site-link"
+                >
+                  {{ currentBaseURL }}
+                </a>
+              </div>
+
+              <div v-if="showBaseURLEditor">
+                <label class="block text-sm font-medium mb-2">自定义域名</label>
+                <Input
+                  v-model="baseURLInput"
+                  placeholder="例如: https://www.gying.net"
+                  @keyup.enter="handleSaveBaseURL"
+                />
+              </div>
+
+              <div v-if="showBaseURLEditor" class="site-config-notice">
+                保存站点地址后，当前登录状态会被清空，需要重新登录。
+              </div>
+
+              <Button
+                v-if="showBaseURLEditor"
+                @click="handleSaveBaseURL"
+                :disabled="savingBaseURL || !baseURLInput.trim()"
+                class="w-full login-button"
+              >
+                {{ savingBaseURL ? '保存中...' : '保存站点地址' }}
+              </Button>
+            </div>
+          </Card>
+
           <!-- 登录状态 -->
           <Card>
             <div class="p-6">
@@ -582,6 +740,10 @@ const copyHashToClipboard = async () => {
                 <span>🔐</span>
                 <span>登录状态</span>
               </h3>
+
+              <div class="login-notice">
+                登录前请先确认上方站点地址是否正确。
+              </div>
               
               <!-- 已登录 -->
               <div v-if="isLoggedIn" class="space-y-4">
@@ -595,7 +757,7 @@ const copyHashToClipboard = async () => {
                   </div>
                   <div class="flex justify-between">
                     <span class="text-muted-foreground">用户名</span>
-                    <span>{{ status.username_masked }}</span>
+                    <span>{{ status.username }}</span>
                   </div>
                   <div class="flex justify-between">
                     <span class="text-muted-foreground">登录时间</span>
@@ -1021,6 +1183,81 @@ const copyHashToClipboard = async () => {
   font-weight: 600;
 }
 
+.site-link {
+  display: inline-flex;
+  align-items: center;
+  max-width: 100%;
+  color: hsl(var(--primary));
+  font-weight: 600;
+  line-height: 1.5;
+  word-break: break-all;
+  text-decoration: none;
+}
+
+.site-link:hover {
+  text-decoration: underline;
+}
+
+.site-header-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-bottom: 0.75rem;
+}
+
+.site-edit-button {
+  flex-shrink: 0;
+  min-width: 3.5rem;
+  height: 2rem;
+  padding: 0 0.75rem;
+  border: 1px solid hsl(var(--border));
+  border-radius: 9999px;
+  background: hsl(var(--background));
+  color: hsl(var(--foreground));
+  font-size: 0.75rem;
+  font-weight: 600;
+  transition: all 0.2s ease;
+}
+
+.site-edit-button:hover:not(:disabled) {
+  border-color: hsl(var(--primary));
+  color: hsl(var(--primary));
+}
+
+.site-edit-button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.site-config-notice,
+.login-notice {
+  border-radius: 0.75rem;
+  padding: 0.75rem;
+  font-size: 0.75rem;
+  line-height: 1.5;
+}
+
+.site-config-notice {
+  border: 1px solid rgba(245, 158, 11, 0.35);
+  background: rgba(245, 158, 11, 0.12);
+  color: rgb(180, 83, 9);
+}
+
+.login-notice {
+  margin-bottom: 1rem;
+  background: hsl(var(--muted) / 0.4);
+  color: hsl(var(--muted-foreground));
+}
+
+@media (prefers-color-scheme: dark) {
+  .site-config-notice {
+    border-color: rgba(251, 191, 36, 0.3);
+    background: rgba(245, 158, 11, 0.18);
+    color: rgb(253, 230, 138);
+  }
+}
+
 /* 响应式 */
 @media (max-width: 1024px) {
   .gying-manager .grid {
@@ -1103,4 +1340,3 @@ const copyHashToClipboard = async () => {
   }
 }
 </style>
-

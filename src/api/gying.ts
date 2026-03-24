@@ -1,5 +1,6 @@
 import axios from 'axios'
 import type {
+  GyingConfigResponse,
   GyingStatusResponse,
   GyingLoginResponse,
   GyingLogoutResponse,
@@ -53,6 +54,30 @@ gyingApi.interceptors.response.use(
 export const getStatus = async (hash: string): Promise<GyingStatusResponse> => {
   const response = await gyingApi.post<GyingStatusResponse>(`/${hash}`, {
     action: 'get_status'
+  })
+  return response.data
+}
+
+/**
+ * 获取当前站点配置
+ * @param hash 用户专属hash
+ */
+export const getConfig = async (hash: string): Promise<GyingConfigResponse> => {
+  const response = await gyingApi.post<GyingConfigResponse>(`/${hash}`, {
+    action: 'get_config'
+  })
+  return response.data
+}
+
+/**
+ * 更新当前站点配置
+ * @param hash 用户专属hash
+ * @param baseURL 自定义站点地址
+ */
+export const updateConfig = async (hash: string, baseURL: string): Promise<GyingConfigResponse> => {
+  const response = await gyingApi.post<GyingConfigResponse>(`/${hash}`, {
+    action: 'update_config',
+    base_url: baseURL
   })
   return response.data
 }
@@ -134,9 +159,10 @@ export const getHashByUsername = async (username: string): Promise<string> => {
 // 导出所有API函数
 export default {
   getStatus,
+  getConfig,
+  updateConfig,
   login,
   logout,
   testSearch,
   getHashByUsername
 }
-
