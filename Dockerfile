@@ -18,17 +18,14 @@ ENV CACHE_PATH=/app/data/cache
 ENV LOG_PATH=/app/data/logs
 
 # 默认插件配置
-<<<<<<< HEAD
 ENV ENABLED_PLUGINS=labi,zhizhen,shandian,duoduo,wanou,gying
 
 # 默认Telegram频道配置
 ENV CHANNELS=tgsearchers3,tianyirigeng,tyypzhpd,cloudtianyi,tianyifc,ydypzyfx,yunpan139,ucquark,ucwpz,yyunpanuc,zyzhpd123,xx123pan,yp123pan,yggpan,zyfb123
-=======
 ENV ENABLED_PLUGINS=labi,zhizhen,shandian,duoduo,wanou,gying
 
 # 默认Telegram频道配置
 ENV CHANNELS=tgsearchers3,tianyirigeng,tyypzhpd,cloudtianyi,tianyifc,ydypzyfx,yunpan139,ucquark,ucwpz,yyunpanuc,zyzhpd123,xx123pan,yp123pan,yggpan,zyfb123
->>>>>>> upstream/main
 
 # 默认性能配置
 ENV CACHE_ENABLED=true
