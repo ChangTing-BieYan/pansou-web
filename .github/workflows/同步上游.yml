@@ -71,12 +71,14 @@ jobs:
             else
               echo "🔄 上游修改了其他内容，合并并恢复本地 CHANNELS 与 ENABLED_PLUGINS"
               if [ -n "$LOCAL_CHANNELS" ]; then
-                # 使用 printf 处理特殊字符并转义
-                sed -i "/- CHANNELS=/c\\$(printf '%s' "$LOCAL_CHANNELS" | sed 's/[&/\]/\\&/g')" docker-compose.yml
+                # 去掉变量中的换行符并进行转义
+                CLEANED_CHANNELS=$(echo "$LOCAL_CHANNELS" | tr -d '\n' | sed 's/[&/\]/\\&/g')
+                sed -i "/- CHANNELS=/c\\$CLEANED_CHANNELS" docker-compose.yml
               fi
               if [ -n "$LOCAL_PLUGINS" ]; then
-                # 使用 printf 处理特殊字符并转义
-                sed -i "/- ENABLED_PLUGINS=/c\\$(printf '%s' "$LOCAL_PLUGINS" | sed 's/[&/\]/\\&/g')" docker-compose.yml
+                # 去掉变量中的换行符并进行转义
+                CLEANED_PLUGINS=$(echo "$LOCAL_PLUGINS" | tr -d '\n' | sed 's/[&/\]/\\&/g')
+                sed -i "/- ENABLED_PLUGINS=/c\\$CLEANED_PLUGINS" docker-compose.yml
               fi
             fi
           fi
@@ -86,36 +88,4 @@ jobs:
             LOCAL_CHANNELS=$(grep '^ENV CHANNELS=' /tmp/mychanges/Dockerfile || true)
             LOCAL_PLUGINS=$(grep '^ENV ENABLED_PLUGINS=' /tmp/mychanges/Dockerfile || true)
 
-            grep -v -E '^ENV (CHANNELS|ENABLED_PLUGINS)=' Dockerfile > /tmp/upstream_clean_dockerfile
-            grep -v -E '^ENV (CHANNELS|ENABLED_PLUGINS)=' /tmp/mychanges/Dockerfile > /tmp/local_clean_dockerfile
-
-            if cmp -s /tmp/upstream_clean_dockerfile /tmp/local_clean_dockerfile; then
-              echo "✅ 上游只修改了 CHANNELS 或 ENABLED_PLUGINS，不合并 Dockerfile"
-              cp /tmp/mychanges/Dockerfile Dockerfile
-            else
-              echo "🔄 上游修改了其他内容，合并并恢复本地 CHANNELS 与 ENABLED_PLUGINS"
-              if [ -n "$LOCAL_CHANNELS" ]; then
-                # 使用 printf 处理特殊字符并转义
-                sed -i "/^ENV CHANNELS=/c\\$(printf '%s' "$LOCAL_CHANNELS" | sed 's/[&/\]/\\&/g')" Dockerfile
-              fi
-              if [ -n "$LOCAL_PLUGINS" ]; then
-                # 使用 printf 处理特殊字符并转义
-                sed -i "/^ENV ENABLED_PLUGINS=/c\\$(printf '%s' "$LOCAL_PLUGINS" | sed 's/[&/\]/\\&/g')" Dockerfile
-              fi
-            fi
-          fi
-
-      - name: 恢复其他本地修改
-        run: |
-          cp /tmp/mychanges/build-docker.yml ./ || true
-
-      - name: 提交并推送
-        run: |
-          git add .
-
-          # ❗核心：彻底禁止 workflow 被提交
-          git reset HEAD .github/workflows || true
-          git checkout -- .github/workflows || true
-
-          git diff --cached --quiet || git commit -m "🔄 同步上游"
-          git push origin main
+            grep -v -
