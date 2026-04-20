@@ -23,6 +23,14 @@
           <span class="endpoint">/api/health</span>
         </div>
       </div>
+      <div class="overview-card">
+        <div class="card-icon">🧪</div>
+        <div class="card-content">
+          <h3>链接检测</h3>
+          <p>检测网盘分享链接当前是否有效</p>
+          <span class="endpoint">/api/check/links</span>
+        </div>
+      </div>
     </div>
 
     <!-- 导航选项卡 -->
@@ -476,6 +484,185 @@
       </div>
     </div>
 
+    <!-- 链接检测API文档 -->
+    <div v-if="activeTab === 'check'" class="api-section">
+      <div class="api-header">
+        <h2 class="api-title">🧪 链接检测API</h2>
+        <div class="api-methods">
+          <span class="method-badge post">POST</span>
+          <span class="endpoint-url">/api/check/links</span>
+        </div>
+      </div>
+
+      <div class="api-content">
+        <div class="auth-header-section">
+          <h3 class="section-title">{{ tokenFieldTitle }}</h3>
+          <div class="auth-header-form">
+            <div class="form-group">
+              <label>Authorization Header:</label>
+              <div class="auth-input-wrapper">
+                <span class="auth-prefix">Bearer</span>
+                <input
+                  v-model="authToken"
+                  class="form-input auth-input"
+                  :placeholder="effectiveToken || (authEnabled ? '请先登录或在认证API调试获取token' : '留空即可，未启用认证')"
+                />
+              </div>
+              <p class="auth-hint">
+                {{ tokenStatus }}
+              </p>
+              <p v-if="!authToken && effectiveToken" class="auth-hint" style="color: #2563eb;">
+                💡 当前将使用: {{ effectiveToken.substring(0, 20) }}...
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <div class="params-section">
+          <h3 class="section-title">📋 请求参数</h3>
+          <div class="params-table">
+            <div class="param-header">
+              <span>参数名</span>
+              <span>类型</span>
+              <span>必填</span>
+              <span>描述</span>
+            </div>
+            <div class="param-row" v-for="param in checkParams" :key="param.name">
+              <span class="param-name">{{ param.name }}</span>
+              <span class="param-type">{{ param.type }}</span>
+              <span class="param-required" :class="{ 'required': param.required }">
+                {{ param.required ? '是' : '否' }}
+              </span>
+              <span class="param-desc">{{ param.description }}</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="debug-section">
+          <h3 class="section-title">🛠️ 在线调试</h3>
+          <div class="debug-form">
+            <div class="form-group">
+              <label>view_token:</label>
+              <input
+                v-model="checkForm.view_token"
+                class="form-input"
+                placeholder="可选，用于区分当前视图批次"
+              />
+            </div>
+
+            <div class="form-group">
+              <label>检测项:</label>
+              <div class="check-items">
+                <div
+                  v-for="(item, index) in checkForm.items"
+                  :key="`check-item-${index}`"
+                  class="check-item-card"
+                >
+                  <div class="check-item-head">
+                    <span class="check-item-title">检测项 {{ index + 1 }}</span>
+                    <button
+                      v-if="checkForm.items.length > 1"
+                      type="button"
+                      class="remove-item-button"
+                      @click="removeCheckItem(index)"
+                    >
+                      删除
+                    </button>
+                  </div>
+
+                  <div class="check-item-grid">
+                    <div class="form-group">
+                      <label>网盘类型 *</label>
+                      <select v-model="item.disk_type" class="form-select">
+                        <option v-for="type in detectableCloudTypes" :key="type.id" :value="type.id">
+                          {{ type.name }} ({{ type.id }})
+                        </option>
+                      </select>
+                    </div>
+
+                    <div class="form-group check-item-url">
+                      <label>链接 *</label>
+                      <input
+                        v-model="item.url"
+                        class="form-input"
+                        placeholder="输入完整分享链接"
+                      />
+                    </div>
+
+                    <div class="form-group">
+                      <label>提取码</label>
+                      <input
+                        v-model="item.password"
+                        class="form-input"
+                        placeholder="可选，未拼进链接时可填写"
+                      />
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div class="check-actions">
+                <button type="button" class="add-item-button" @click="addCheckItem">
+                  + 添加检测项
+                </button>
+                <p class="auth-hint" style="margin: 0;">
+                  💡 支持批量提交，常见状态为 `ok` / `bad` / `locked` / `uncertain`
+                </p>
+              </div>
+            </div>
+
+            <div class="form-actions">
+              <button @click="testCheckAPI" class="test-button" :disabled="checkLoading">
+                <span class="button-icon">{{ checkLoading ? '⏳' : '🚀' }}</span>
+                {{ checkLoading ? '请求中...' : '发送请求' }}
+              </button>
+              <button @click="clearCheckForm" class="clear-button">
+                <span class="button-icon">🧹</span>
+                清空表单
+              </button>
+            </div>
+          </div>
+
+          <div class="request-preview">
+            <h4>请求预览:</h4>
+            <div class="code-block">
+              <pre><code>{{ generateCheckRequest() }}</code></pre>
+              <button @click="copyToClipboard(generateCheckRequest())" class="copy-btn">📋</button>
+            </div>
+          </div>
+
+          <div v-if="checkResponse" class="response-section">
+            <h4>响应结果:</h4>
+            <div class="response-status" :class="checkResponse.success ? 'success' : 'error'">
+              <span class="status-icon">{{ checkResponse.success ? '✅' : '❌' }}</span>
+              <span>{{ checkResponse.success ? '请求成功' : '请求失败' }}</span>
+              <span class="status-code">{{ checkResponse.status }}</span>
+            </div>
+            <div class="code-block response-body">
+              <pre><code>{{ JSON.stringify(checkResponse.data, null, 2) }}</code></pre>
+              <button @click="copyToClipboard(JSON.stringify(checkResponse.data, null, 2))" class="copy-btn">📋</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="response-fields">
+          <h3 class="section-title">📊 响应字段</h3>
+          <div class="params-table response-table">
+            <div class="param-header response-header">
+              <span>字段名</span>
+              <span>类型</span>
+              <span>描述</span>
+            </div>
+            <div class="param-row response-row" v-for="field in checkResponseFields" :key="field.name">
+              <span class="param-name">{{ field.name }}</span>
+              <span class="param-type">{{ field.type }}</span>
+              <span class="param-desc">{{ field.description }}</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
     <!-- 通用说明 -->
     <div v-if="activeTab === 'general'" class="api-section">
       <div class="api-header">
@@ -566,6 +753,7 @@ import SearchIcon from '@/components/icons/SearchIcon.vue';
 import LockIcon from '@/components/icons/LockIcon.vue';
 import HeartbeatIcon from '@/components/icons/HeartbeatIcon.vue';
 import BookIcon from '@/components/icons/BookIcon.vue';
+import FilterIcon from '@/components/icons/FilterIcon.vue';
 
 // 当前激活的选项卡
 const activeTab = ref('search');
@@ -575,6 +763,7 @@ const tabs = [
   { id: 'search', name: '搜索API', icon: SearchIcon },
   { id: 'auth', name: '认证API', icon: LockIcon },
   { id: 'health', name: '健康检查', icon: HeartbeatIcon },
+  { id: 'check', name: '链接检测', icon: FilterIcon },
   { id: 'general', name: '通用说明', icon: BookIcon }
 ];
 
@@ -631,6 +820,26 @@ const healthResponseFields = [
   { name: 'auth_enabled', type: 'boolean', description: '是否启用认证功能（true=已启用，所有API需要token；false=未启用，不需要token）' }
 ];
 
+const checkParams = [
+  { name: 'items', type: 'object[]', required: true, description: '待检测链接数组，至少提供一项' },
+  { name: 'items[].disk_type', type: 'string', required: true, description: '网盘类型，如 baidu、quark、xunlei、115、mobile' },
+  { name: 'items[].url', type: 'string', required: true, description: '完整分享链接' },
+  { name: 'items[].password', type: 'string', required: false, description: '提取码，未拼接进链接时可传' },
+  { name: 'view_token', type: 'string', required: false, description: '前端视图标识，可选' }
+];
+
+const checkResponseFields = [
+  { name: 'results', type: 'object[]', description: '检测结果数组' },
+  { name: 'results[].disk_type', type: 'string', description: '网盘类型' },
+  { name: 'results[].url', type: 'string', description: '原始链接' },
+  { name: 'results[].normalized_url', type: 'string', description: '规范化后的链接' },
+  { name: 'results[].state', type: 'string', description: '检测状态：ok / bad / locked / unsupported / uncertain' },
+  { name: 'results[].summary', type: 'string', description: '状态说明' },
+  { name: 'results[].cache_hit', type: 'boolean', description: '是否命中缓存' },
+  { name: 'results[].checked_at', type: 'number', description: '检测时间戳（毫秒）' },
+  { name: 'results[].expires_at', type: 'number', description: '缓存过期时间戳（毫秒）' }
+];
+
 // 网盘类型配置
 const cloudTypes = [
   { id: 'baidu', name: '百度网盘', icon: '🔵' },
@@ -646,6 +855,10 @@ const cloudTypes = [
   { id: 'magnet', name: '磁力链接', icon: '🧲' },
   { id: 'ed2k', name: '电驴链接', icon: '🔗' }
 ];
+
+const detectableCloudTypes = cloudTypes.filter((type) =>
+  ['baidu', 'aliyun', 'quark', 'tianyi', 'uc', 'mobile', '115', 'xunlei', '123'].includes(type.id)
+);
 
 // 搜索表单数据
 const searchMethod = ref('POST');
@@ -665,17 +878,30 @@ const searchForm = ref({
 // 加载状态
 const searchLoading = ref(false);
 const healthLoading = ref(false);
+const checkLoading = ref(false);
 
 // 响应数据
 const searchResponse = ref<any>(null);
 const healthResponse = ref<any>(null);
 const authResponse = ref<any>(null);
+const checkResponse = ref<any>(null);
 
 // 认证相关状态
 const authMethod = ref<'login' | 'verify' | 'logout'>('login');
 const authForm = ref({
   username: '',
   password: ''
+});
+
+const createCheckItem = () => ({
+  disk_type: 'quark',
+  url: '',
+  password: ''
+});
+
+const checkForm = ref({
+  view_token: '',
+  items: [createCheckItem()]
 });
 const authLoading = ref(false);
 const debugToken = ref(''); // 调试获取的token
@@ -884,6 +1110,107 @@ const testHealthAPI = async () => {
   }
 };
 
+const addCheckItem = () => {
+  checkForm.value.items.push(createCheckItem());
+};
+
+const removeCheckItem = (index: number) => {
+  if (checkForm.value.items.length <= 1) return;
+  checkForm.value.items.splice(index, 1);
+};
+
+const generateCheckRequest = () => {
+  const token = effectiveToken.value;
+  const authHeader = token ? `Authorization: Bearer ${token}\n` : '';
+
+  const payload = {
+    items: checkForm.value.items
+      .filter((item) => item.disk_type || item.url || item.password)
+      .map((item) => {
+        const result: Record<string, string> = {
+          disk_type: item.disk_type || 'quark',
+          url: item.url || 'https://pan.quark.cn/s/example'
+        };
+
+        if (item.password.trim()) {
+          result.password = item.password.trim();
+        }
+
+        return result;
+      }),
+    ...(checkForm.value.view_token.trim() ? { view_token: checkForm.value.view_token.trim() } : {})
+  };
+
+  return `POST /api/check/links
+${authHeader}Content-Type: application/json
+
+${JSON.stringify(payload, null, 2)}`;
+};
+
+const testCheckAPI = async () => {
+  const items = checkForm.value.items
+    .map((item) => ({
+      disk_type: item.disk_type.trim(),
+      url: item.url.trim(),
+      password: item.password.trim()
+    }))
+    .filter((item) => item.disk_type || item.url || item.password);
+
+  if (!items.length) {
+    alert('请至少填写一个检测项');
+    return;
+  }
+
+  const hasInvalid = items.some((item) => !item.disk_type || !item.url);
+  if (hasInvalid) {
+    alert('每个检测项都需要填写网盘类型和链接');
+    return;
+  }
+
+  checkLoading.value = true;
+  checkResponse.value = null;
+
+  try {
+    const token = effectiveToken.value;
+    const headers: Record<string, string> = {};
+    if (token) {
+      headers.Authorization = `Bearer ${token}`;
+    }
+
+    const payload = {
+      items: items.map((item) => {
+        const result: Record<string, string> = {
+          disk_type: item.disk_type,
+          url: item.url
+        };
+
+        if (item.password) {
+          result.password = item.password;
+        }
+
+        return result;
+      }),
+      ...(checkForm.value.view_token.trim() ? { view_token: checkForm.value.view_token.trim() } : {})
+    };
+
+    const response = await axios.post('/api/check/links', payload, { headers });
+
+    checkResponse.value = {
+      success: true,
+      status: response.status,
+      data: response.data
+    };
+  } catch (error: any) {
+    checkResponse.value = {
+      success: false,
+      status: error.response?.status || 0,
+      data: error.response?.data || { message: error.message }
+    };
+  } finally {
+    checkLoading.value = false;
+  }
+};
+
 // 数据来源变化处理
 const onSourceChange = () => {
   // 当切换到仅插件时，清空频道列表
@@ -995,6 +1322,14 @@ const clearAuthForm = () => {
     password: ''
   };
   authResponse.value = null;
+};
+
+const clearCheckForm = () => {
+  checkForm.value = {
+    view_token: '',
+    items: [createCheckItem()]
+  };
+  checkResponse.value = null;
 };
 
 // 加载健康状态并检查认证状态
@@ -1878,6 +2213,83 @@ const copyToClipboard = async (text: string) => {
   font-weight: 600;
 }
 
+.check-items {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.check-item-card {
+  padding: 1rem;
+  border: 1px solid hsl(var(--border));
+  border-radius: 8px;
+  background: hsl(var(--card));
+}
+
+.check-item-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+
+.check-item-title {
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: hsl(var(--foreground));
+}
+
+.check-item-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 180px) minmax(0, 1fr) minmax(0, 180px);
+  gap: 1rem;
+}
+
+.check-item-url {
+  min-width: 0;
+}
+
+.check-item-card .form-group {
+  margin-bottom: 0;
+}
+
+.check-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-top: 1rem;
+  flex-wrap: wrap;
+}
+
+.add-item-button,
+.remove-item-button {
+  border: 1px solid hsl(var(--border));
+  border-radius: 6px;
+  background: hsl(var(--background));
+  color: hsl(var(--foreground));
+  cursor: pointer;
+  font-size: 0.875rem;
+  font-weight: 500;
+  transition: all 0.2s ease;
+}
+
+.add-item-button {
+  padding: 0.65rem 1rem;
+}
+
+.remove-item-button {
+  padding: 0.45rem 0.75rem;
+}
+
+.add-item-button:hover,
+.remove-item-button:hover {
+  border-color: #93c5fd;
+  color: #1d4ed8;
+  background: rgba(37, 99, 235, 0.04);
+}
+
 /* 响应式设计 */
 @media (max-width: 768px) {
   .api-docs {
@@ -1945,6 +2357,18 @@ const copyToClipboard = async (text: string) => {
   .field-status {
     font-size: 0.7rem;
     padding: 0.0625rem 0.375rem;
+  }
+
+  .check-item-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .check-item-head {
+    align-items: flex-start;
+  }
+
+  .check-actions {
+    align-items: flex-start;
   }
   
   .api-header {

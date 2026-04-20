@@ -1,7 +1,24 @@
 <script setup lang="ts">
 import { ref, computed, watch, nextTick, onMounted, onUnmounted } from 'vue';
-import type { MergedResults, MergedResultItem } from '@/types';
+import { inspectVisibleLinks } from '@/api';
+import type {
+  DetectionSettings,
+  LinkCheckItem,
+  LinkHealthRecord,
+  LinkHealthState,
+  MergedResults,
+  MergedResultItem,
+} from '@/types';
 import { getDiskTypeName } from '@/utils/diskTypes';
+import {
+  buildHealthCacheKey,
+  buildHealthRecord,
+  loadDetectionSettings,
+  loadLinkHealthCache,
+  persistLinkHealthCache,
+  pruneExpiredHealthCache,
+  saveCachedLinkHealth,
+} from '@/utils/linkDetection';
 
 const props = defineProps<{
   mergedResults: MergedResults;
@@ -20,6 +37,7 @@ const visibleItems = ref<MergedResultItem[]>([]);
 const PAGE_SIZE = 20;
 // 当前加载的页码
 const currentPage = ref(1);
+const listContainerRef = ref<HTMLElement | null>(null);
 // 当前查看详情的结果项
 const detailItem = ref<MergedResultItem | null>(null);
 // 复制状态
@@ -30,6 +48,27 @@ const passwordCopyTimer = ref<number | null>(null);
 const listPasswordFeedbackKey = ref('');
 const listPasswordFeedbackStatus = ref<'idle' | 'success' | 'error'>('idle');
 const listPasswordFeedbackTimer = ref<number | null>(null);
+const detectionSettings = ref<DetectionSettings>(loadDetectionSettings());
+const healthCache = ref<Record<string, LinkHealthRecord>>({});
+const pendingHealthMap = ref<Record<string, true>>({});
+const currentViewToken = ref('');
+
+const supportedDetectionDiskTypes = new Set([
+  'baidu',
+  'quark',
+  'aliyun',
+  'uc',
+  'tianyi',
+  '123',
+  'xunlei',
+  '115',
+  'mobile'
+]);
+
+let visibilityObserver: IntersectionObserver | null = null;
+let flushTimer: number | null = null;
+const queuedItems = new Map<string, LinkCheckItem>();
+const inFlightKeys = new Set<string>();
 
 // 计算所有可用的网盘类型
 const diskTypes = computed(() => {
@@ -56,6 +95,262 @@ const showInitialState = computed(() => {
   return !hasResults.value && !props.hasSearched;
 });
 
+const hydrateHealthCache = () => {
+  const nextCache = pruneExpiredHealthCache(loadLinkHealthCache());
+  healthCache.value = nextCache;
+  persistLinkHealthCache(nextCache);
+};
+
+const reloadDetectionSettings = () => {
+  detectionSettings.value = loadDetectionSettings();
+};
+
+const getHealthStateKey = (diskType: string, url: string) => {
+  return buildHealthCacheKey(diskType, url);
+};
+
+const getLinkHealthRecord = (diskType: string, url: string) => {
+  const key = getHealthStateKey(diskType, url);
+
+  if (pendingHealthMap.value[key]) {
+    return buildHealthRecord('pending', {
+      checked_at: Date.now(),
+      expires_at: Date.now() + 5 * 60 * 1000
+    });
+  }
+
+  return healthCache.value[key] || null;
+};
+
+const getIndicatorState = (item: MergedResultItem): LinkHealthState => {
+  if (!activeTab.value) return 'idle';
+  return getLinkHealthRecord(activeTab.value, item.url)?.state || 'idle';
+};
+
+const getIndicatorTitle = (item: MergedResultItem) => {
+  const record = getLinkHealthRecord(activeTab.value, item.url);
+  if (!record) return '未检测';
+
+  const labelMap: Record<LinkHealthState, string> = {
+    idle: '未检测',
+    pending: '检测中',
+    ok: '链接有效',
+    bad: '链接失效',
+    locked: '需要提取码',
+    unsupported: '暂不支持检测',
+    uncertain: '检测结果不确定'
+  };
+
+  return record.summary ? `${labelMap[record.state]}: ${record.summary}` : labelMap[record.state];
+};
+
+const shouldShowIndicator = (item: MergedResultItem) => {
+  return getIndicatorState(item) !== 'idle';
+};
+
+const getIndicatorClass = (item: MergedResultItem) => {
+  const state = getIndicatorState(item);
+  return {
+    'health-indicator': true,
+    'is-pending': state === 'pending',
+    'is-ok': state === 'ok',
+    'is-bad': state === 'bad',
+    'is-locked': state === 'locked',
+    'is-uncertain': state === 'uncertain',
+    'is-unsupported': state === 'unsupported'
+  };
+};
+
+const getHealthPriority = (item: MergedResultItem) => {
+  const state = activeTab.value
+    ? getLinkHealthRecord(activeTab.value, item.url)?.state || 'idle'
+    : 'idle';
+
+  switch (state) {
+    case 'ok':
+      return 0;
+    case 'locked':
+      return 1;
+    case 'pending':
+      return 2;
+    case 'idle':
+      return 3;
+    case 'unsupported':
+      return 4;
+    case 'uncertain':
+      return 5;
+    case 'bad':
+      return 6;
+    default:
+      return 3;
+  }
+};
+
+const getRankedTabData = () => {
+  if (!activeTab.value || !props.mergedResults[activeTab.value]) {
+    return [];
+  }
+
+  const source = props.mergedResults[activeTab.value] || [];
+  if (!detectionSettings.value.enabled || !supportedDetectionDiskTypes.has(activeTab.value)) {
+    return source;
+  }
+
+  return source
+    .map((item, index) => ({
+      item,
+      index,
+      priority: getHealthPriority(item)
+    }))
+    .sort((a, b) => {
+      if (a.priority !== b.priority) {
+        return a.priority - b.priority;
+      }
+
+      return a.index - b.index;
+    })
+    .map(({ item }) => item);
+};
+
+const clearPendingForKeys = (keys: string[]) => {
+  if (!keys.length) return;
+
+  const nextMap = { ...pendingHealthMap.value };
+  keys.forEach((key) => {
+    delete nextMap[key];
+    inFlightKeys.delete(key);
+  });
+  pendingHealthMap.value = nextMap;
+};
+
+const resetInspectionQueue = () => {
+  queuedItems.clear();
+  if (flushTimer) {
+    clearTimeout(flushTimer);
+    flushTimer = null;
+  }
+  pendingHealthMap.value = {};
+  inFlightKeys.clear();
+  currentViewToken.value = `${activeTab.value || 'empty'}-${Date.now()}`;
+};
+
+const scheduleFlush = () => {
+  if (flushTimer || !detectionSettings.value.enabled) return;
+
+  flushTimer = window.setTimeout(() => {
+    flushTimer = null;
+    void flushInspectionQueue();
+  }, 220);
+};
+
+const saveHealthResult = (diskType: string, url: string, record: LinkHealthRecord) => {
+  saveCachedLinkHealth(diskType, url, record);
+  healthCache.value = {
+    ...healthCache.value,
+    [getHealthStateKey(diskType, url)]: record
+  };
+};
+
+const flushInspectionQueue = async () => {
+  if (!detectionSettings.value.enabled || queuedItems.size === 0) return;
+
+  const batchEntries = Array.from(queuedItems.entries()).slice(0, 6);
+  batchEntries.forEach(([key]) => queuedItems.delete(key));
+
+  const pendingMap = { ...pendingHealthMap.value };
+  const items = batchEntries.map(([key, item]) => {
+    pendingMap[key] = true;
+    inFlightKeys.add(key);
+    return item;
+  });
+  pendingHealthMap.value = pendingMap;
+
+  try {
+    const response = await inspectVisibleLinks(items, currentViewToken.value);
+
+    response.results.forEach((result) => {
+      const record = buildHealthRecord(result.state, {
+        summary: result.summary,
+        normalized_url: result.normalized_url,
+        checked_at: result.checked_at,
+        expires_at: result.expires_at
+      });
+
+      saveHealthResult(result.disk_type, result.url, record);
+    });
+  } catch (error) {
+    const fallbackRecord = buildHealthRecord('uncertain', {
+      summary: '检测服务暂不可用',
+      checked_at: Date.now(),
+      expires_at: Date.now() + 5 * 60 * 1000
+    });
+
+    items.forEach((item) => {
+      saveHealthResult(item.disk_type, item.url, fallbackRecord);
+    });
+    console.error('链接检测失败:', error);
+  } finally {
+    clearPendingForKeys(batchEntries.map(([key]) => key));
+
+    if (queuedItems.size > 0) {
+      scheduleFlush();
+    }
+  }
+};
+
+const queueItemInspection = (item: MergedResultItem) => {
+  if (!detectionSettings.value.enabled || !activeTab.value) return;
+  if (!supportedDetectionDiskTypes.has(activeTab.value)) return;
+
+  const key = getHealthStateKey(activeTab.value, item.url);
+  if (queuedItems.has(key) || inFlightKeys.has(key)) return;
+
+  const cached = healthCache.value[key];
+  if (cached && cached.expires_at > Date.now()) return;
+
+  queuedItems.set(key, {
+    disk_type: activeTab.value,
+    url: item.url,
+    password: item.password
+  });
+  scheduleFlush();
+};
+
+const rebuildVisibilityObserver = () => {
+  if (visibilityObserver) {
+    visibilityObserver.disconnect();
+    visibilityObserver = null;
+  }
+
+  if (!detectionSettings.value.enabled || !listContainerRef.value || !activeTab.value) {
+    return;
+  }
+
+  visibilityObserver = new IntersectionObserver(
+    (entries) => {
+      entries.forEach((entry) => {
+        if (!entry.isIntersecting || entry.intersectionRatio < 0.35) return;
+
+        const index = Number((entry.target as HTMLElement).dataset.visibleIndex ?? '-1');
+        if (Number.isNaN(index) || index < 0) return;
+
+        const item = visibleItems.value[index];
+        if (!item) return;
+
+        queueItemInspection(item);
+      });
+    },
+    {
+      root: listContainerRef.value,
+      threshold: [0.35, 0.6]
+    }
+  );
+
+  listContainerRef.value
+    .querySelectorAll<HTMLElement>('.result-item')
+    .forEach((element) => visibilityObserver?.observe(element));
+};
+
 // 监听结果变化，智能选择标签
 watch(
   () => props.mergedResults,
@@ -68,12 +363,14 @@ watch(
           activeTab.value = availableTypes[0] || '';
         }
         updateCurrentTabData();
+        resetInspectionQueue();
       });
     } else {
       // 当没有结果时，清空当前数据
       activeTab.value = '';
       currentTabData.value = [];
       visibleItems.value = [];
+      resetInspectionQueue();
     }
   },
   { immediate: true, deep: true }
@@ -85,6 +382,49 @@ watch(
   () => {
     currentPage.value = 1;
     updateCurrentTabData();
+    resetInspectionQueue();
+  }
+);
+
+watch(
+  () => detectionSettings.value.enabled,
+  (enabled) => {
+    if (!enabled) {
+      resetInspectionQueue();
+      updateCurrentTabData();
+      return;
+    }
+
+    updateCurrentTabData();
+  }
+);
+
+watch(
+  () => [
+    activeTab.value,
+    detectionSettings.value.enabled,
+    Object.keys(pendingHealthMap.value).sort().join('|'),
+    Object.entries(healthCache.value)
+      .map(([key, record]) => `${key}:${record.state}:${record.checked_at}`)
+      .sort()
+      .join('|')
+  ],
+  () => {
+    if (!activeTab.value) return;
+    updateCurrentTabData();
+  }
+);
+
+watch(
+  () => [
+    activeTab.value,
+    detectionSettings.value.enabled,
+    visibleItems.value.map((item) => `${item.url}|${item.password || ''}`).join('||')
+  ],
+  () => {
+    nextTick(() => {
+      rebuildVisibilityObserver();
+    });
   }
 );
 
@@ -96,7 +436,7 @@ const updateCurrentTabData = () => {
     return;
   }
   
-  currentTabData.value = props.mergedResults[activeTab.value] || [];
+  currentTabData.value = getRankedTabData();
   loadMoreItems();
 };
 
@@ -306,14 +646,28 @@ watch(detailItem, (newVal) => {
 });
 
 onMounted(() => {
+  hydrateHealthCache();
+  reloadDetectionSettings();
   window.addEventListener('keydown', handleKeydown);
+  window.addEventListener('storage', reloadDetectionSettings);
+  window.addEventListener('config:saved', reloadDetectionSettings);
+  nextTick(() => {
+    rebuildVisibilityObserver();
+  });
 });
 
 onUnmounted(() => {
   window.removeEventListener('keydown', handleKeydown);
+  window.removeEventListener('storage', reloadDetectionSettings);
+  window.removeEventListener('config:saved', reloadDetectionSettings);
   document.body.style.overflow = '';
   clearCopyFeedbackTimers();
   clearListPasswordFeedbackTimer();
+  if (visibilityObserver) {
+    visibilityObserver.disconnect();
+    visibilityObserver = null;
+  }
+  resetInspectionQueue();
 });
 
 </script>
@@ -371,11 +725,12 @@ onUnmounted(() => {
           <p>暂无数据</p>
         </div>
         
-        <div v-else class="result-list" @scroll="handleScroll">
+        <div ref="listContainerRef" v-else class="result-list" @scroll="handleScroll">
           <div 
             v-for="(item, index) in visibleItems" 
             :key="index" 
             class="result-item"
+            :data-visible-index="index"
           >
             <!-- 标题行（移动端单独占一行） -->
             <div class="result-header">
@@ -385,7 +740,14 @@ onUnmounted(() => {
                 :title="item.note"
                 @click="openTitleDetail(item)"
               >
-                <span class="result-title">{{ item.note }}</span>
+                <span class="result-title-row">
+                  <span class="result-title">{{ item.note }}</span>
+                  <span
+                    v-if="shouldShowIndicator(item)"
+                    :class="getIndicatorClass(item)"
+                    :title="getIndicatorTitle(item)"
+                  ></span>
+                </span>
               </button>
               <!-- 桌面端：数据来源+时间与标题同行 -->
               <div class="result-meta desktop-only" v-if="item.source || item.datetime">
@@ -695,6 +1057,44 @@ onUnmounted(() => {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.result-title-row {
+  display: inline-flex;
+  align-items: center;
+  max-width: 100%;
+  min-width: 0;
+  gap: 0.45rem;
+}
+
+.health-indicator {
+  width: 0.55rem;
+  height: 0.55rem;
+  border-radius: 9999px;
+  flex: 0 0 auto;
+  background: #cbd5e1;
+}
+
+.health-indicator.is-pending {
+  background: #60a5fa;
+  animation: pulse-dot 1.1s ease-in-out infinite;
+}
+
+.health-indicator.is-ok {
+  background: #22c55e;
+}
+
+.health-indicator.is-bad {
+  background: #ef4444;
+}
+
+.health-indicator.is-locked {
+  background: #f59e0b;
+}
+
+.health-indicator.is-uncertain,
+.health-indicator.is-unsupported {
+  background: #94a3b8;
 }
 
 /* 标题行布局 */
@@ -1073,6 +1473,18 @@ onUnmounted(() => {
 @keyframes spin {
   to {
     transform: rotate(360deg);
+  }
+}
+
+@keyframes pulse-dot {
+  0%,
+  100% {
+    opacity: 0.55;
+    transform: scale(0.95);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.08);
   }
 }
 

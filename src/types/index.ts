@@ -89,6 +89,48 @@ export interface ExportSettings {
   allDiskTypesSelected: boolean;
 }
 
+export interface DetectionSettings {
+  enabled: boolean;
+}
+
+export type LinkHealthState =
+  | 'idle'
+  | 'pending'
+  | 'ok'
+  | 'bad'
+  | 'locked'
+  | 'unsupported'
+  | 'uncertain';
+
+export interface LinkHealthRecord {
+  state: LinkHealthState;
+  summary?: string;
+  checked_at: number;
+  expires_at: number;
+  normalized_url?: string;
+}
+
+export interface LinkCheckItem {
+  disk_type: string;
+  url: string;
+  password?: string;
+}
+
+export interface LinkCheckResult {
+  disk_type: string;
+  url: string;
+  normalized_url?: string;
+  state: LinkHealthState;
+  summary?: string;
+  cache_hit: boolean;
+  checked_at: number;
+  expires_at: number;
+}
+
+export interface LinkCheckResponse {
+  results: LinkCheckResult[];
+}
+
 // 导出QQPD相关类型
 export * from './qqpd' 
 export * from './gying'

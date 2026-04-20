@@ -1,5 +1,5 @@
 import axios from 'axios';
-import type { SearchResponse } from '@/types';
+import type { SearchResponse, LinkCheckItem, LinkCheckResponse } from '@/types';
 
 const api = axios.create({
   baseURL: '/api',
@@ -142,6 +142,17 @@ export const logout = async (): Promise<void> => {
     localStorage.removeItem('auth_token');
     localStorage.removeItem('auth_username');
   }
+};
+
+export const inspectVisibleLinks = async (
+  items: LinkCheckItem[],
+  view_token?: string
+): Promise<LinkCheckResponse> => {
+  const response = await api.post<LinkCheckResponse>('/check/links', {
+    items,
+    view_token
+  });
+  return response.data;
 };
 
 // 检查认证状态

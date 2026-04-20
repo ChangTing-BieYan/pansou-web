@@ -227,9 +227,6 @@ const handleSearch = async (params: SearchParams) => {
       
       // 后台预热搜索，仅用于触发后端插件异步缓存，不处理结果
       search(preloadParams)
-        .then(() => {
-          console.log('后台预热搜索已触发，用于提前启动插件异步缓存');
-        })
         .catch(error => {
           console.warn('后台预热搜索失败（不影响主搜索）:', error);
         });
