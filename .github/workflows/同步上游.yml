@@ -61,7 +61,7 @@ jobs:
           if [ -f docker-compose.yml ] && [ -f /tmp/mychanges/docker-compose.yml ]; then
             LOCAL_CHANNELS=$(grep -E '^\s*- CHANNELS=' /tmp/mychanges/docker-compose.yml || true)
             LOCAL_PLUGINS=$(grep -E '^\s*- ENABLED_PLUGINS=' /tmp/mychanges/docker-compose.yml || true)
-            
+
             grep -v -E '^\s*- (CHANNELS|ENABLED_PLUGINS)=' docker-compose.yml > /tmp/upstream_clean.yml
             grep -v -E '^\s*- (CHANNELS|ENABLED_PLUGINS)=' /tmp/mychanges/docker-compose.yml > /tmp/local_clean.yml
 
@@ -71,10 +71,12 @@ jobs:
             else
               echo "🔄 上游修改了其他内容，合并并恢复本地 CHANNELS 与 ENABLED_PLUGINS"
               if [ -n "$LOCAL_CHANNELS" ]; then
-                sed -i "/- CHANNELS=/c\\$(printf '%s' "$LOCAL_CHANNELS")" docker-compose.yml
+                # 使用 printf 处理特殊字符并转义
+                sed -i "/- CHANNELS=/c\\$(printf '%s' "$LOCAL_CHANNELS" | sed 's/[&/\]/\\&/g')" docker-compose.yml
               fi
               if [ -n "$LOCAL_PLUGINS" ]; then
-                sed -i "/- ENABLED_PLUGINS=/c\\$(printf '%s' "$LOCAL_PLUGINS")" docker-compose.yml
+                # 使用 printf 处理特殊字符并转义
+                sed -i "/- ENABLED_PLUGINS=/c\\$(printf '%s' "$LOCAL_PLUGINS" | sed 's/[&/\]/\\&/g')" docker-compose.yml
               fi
             fi
           fi
@@ -93,10 +95,12 @@ jobs:
             else
               echo "🔄 上游修改了其他内容，合并并恢复本地 CHANNELS 与 ENABLED_PLUGINS"
               if [ -n "$LOCAL_CHANNELS" ]; then
-                sed -i "/^ENV CHANNELS=/c\\$(printf '%s' "$LOCAL_CHANNELS")" Dockerfile
+                # 使用 printf 处理特殊字符并转义
+                sed -i "/^ENV CHANNELS=/c\\$(printf '%s' "$LOCAL_CHANNELS" | sed 's/[&/\]/\\&/g')" Dockerfile
               fi
               if [ -n "$LOCAL_PLUGINS" ]; then
-                sed -i "/^ENV ENABLED_PLUGINS=/c\\$(printf '%s' "$LOCAL_PLUGINS")" Dockerfile
+                # 使用 printf 处理特殊字符并转义
+                sed -i "/^ENV ENABLED_PLUGINS=/c\\$(printf '%s' "$LOCAL_PLUGINS" | sed 's/[&/\]/\\&/g')" Dockerfile
               fi
             fi
           fi
