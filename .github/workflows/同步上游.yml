@@ -71,10 +71,10 @@ jobs:
             else
               echo "🔄 上游修改了其他内容，合并并恢复本地 CHANNELS 与 ENABLED_PLUGINS"
               if [ -n "$LOCAL_CHANNELS" ]; then
-                sed -i "/- CHANNELS=/c\\$LOCAL_CHANNELS" docker-compose.yml
+                sed -i "/- CHANNELS=/c\\$(printf '%s' "$LOCAL_CHANNELS")" docker-compose.yml
               fi
               if [ -n "$LOCAL_PLUGINS" ]; then
-                sed -i "/- ENABLED_PLUGINS=/c\\$LOCAL_PLUGINS" docker-compose.yml
+                sed -i "/- ENABLED_PLUGINS=/c\\$(printf '%s' "$LOCAL_PLUGINS")" docker-compose.yml
               fi
             fi
           fi
@@ -93,10 +93,10 @@ jobs:
             else
               echo "🔄 上游修改了其他内容，合并并恢复本地 CHANNELS 与 ENABLED_PLUGINS"
               if [ -n "$LOCAL_CHANNELS" ]; then
-                sed -i "/^ENV CHANNELS=/c\\$LOCAL_CHANNELS" Dockerfile
+                sed -i "/^ENV CHANNELS=/c\\$(printf '%s' "$LOCAL_CHANNELS")" Dockerfile
               fi
               if [ -n "$LOCAL_PLUGINS" ]; then
-                sed -i "/^ENV ENABLED_PLUGINS=/c\\$LOCAL_PLUGINS" Dockerfile
+                sed -i "/^ENV ENABLED_PLUGINS=/c\\$(printf '%s' "$LOCAL_PLUGINS")" Dockerfile
               fi
             fi
           fi
