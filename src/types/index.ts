@@ -73,6 +73,22 @@ export interface FilterConfig {
   exclude?: string[];
 }
 
+// 搜索结果导出格式
+export type ExportFormat = 'json' | 'txt';
+
+// 搜索结果导出字段
+export type ExportField = 'sequence' | 'title' | 'source' | 'datetime';
+
+// 搜索结果导出设置
+export interface ExportSettings {
+  format: ExportFormat;
+  fields: ExportField[];
+  prettyJson: boolean;
+  includeFieldLabels: boolean;
+  selectedDiskTypes: string[];
+  allDiskTypesSelected: boolean;
+}
+
 // 导出QQPD相关类型
 export * from './qqpd' 
 export * from './gying'

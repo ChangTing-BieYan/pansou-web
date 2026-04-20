@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import { ref, reactive, onMounted, onUnmounted, computed } from 'vue';
+import { ref, reactive, onMounted, onUnmounted, computed, nextTick, watch } from 'vue';
 import { search, logout, getHealth, verifyToken, type SearchParams, type HealthStatus } from '@/api';
-import type { SearchResponse, MergedResults } from '@/types';
+import type { SearchResponse, MergedResults, ExportField, ExportSettings } from '@/types';
 import SearchForm from '@/components/SearchForm.vue';
 import ResultTabs from '@/components/ResultTabs.vue';
 import SearchStats from '@/components/SearchStats.vue';
@@ -13,6 +13,8 @@ import AccountCenter from '@/components/AccountCenter.vue';
 import GyingManager from '@/components/GyingManager.vue';
 import PanlianManager from '@/components/PanlianManager.vue';
 import WeiboManager from '@/components/WeiboManager.vue';
+import ExportResultsModal from '@/components/ExportResultsModal.vue';
+import { getDiskTypeName } from '@/utils/diskTypes';
 
 // 后端健康状态缓存（应用启动时获取一次）
 const backendHealth = ref<HealthStatus | null>(null);
@@ -38,11 +40,36 @@ const secondSearchTimeout = ref<number | null>(null);
 const thirdSearchTimeout = ref<number | null>(null);
 const fourthSearchTimeout = ref<number | null>(null);
 const lastSearchParams = ref<SearchParams | null>(null);
+const showExportModal = ref(false);
+const navHeaderRef = ref<HTMLElement | null>(null);
+const mainContentRef = ref<HTMLElement | null>(null);
+const footerRef = ref<HTMLElement | null>(null);
+const searchResultsBlockRef = ref<HTMLElement | null>(null);
+const mobileSearchResultsHeight = ref<string>('');
+const exportSettings = ref<ExportSettings>({
+  format: 'json',
+  fields: ['title', 'source', 'datetime'],
+  prettyJson: true,
+  includeFieldLabels: true,
+  selectedDiskTypes: [],
+  allDiskTypesSelected: true
+});
+
+const EXPORT_SETTINGS_STORAGE_KEY = 'pansou_export_settings';
 
 // 是否已经执行过搜索
 const hasSearched = ref(false);
 // 是否正在进行后台搜索（包括初始搜索和后续更新）
 const isActivelySearching = ref(false);
+const hasExportableResults = computed(() => {
+  return Object.values(searchResults.mergedResults || {}).some(items => Array.isArray(items) && items.length > 0);
+});
+const exportableDiskTypes = computed(() => {
+  return Object.keys(searchResults.mergedResults || {}).filter(key => {
+    const items = searchResults.mergedResults[key];
+    return Array.isArray(items) && items.length > 0;
+  });
+});
 
 // 强制刷新逻辑
 let forceRefreshPending = false;
@@ -340,6 +367,348 @@ const updateSearchResults = (response: SearchResponse) => {
     searchResults.mergedResults = {};
   }
 };
+
+const loadExportSettings = () => {
+  try {
+    const saved = localStorage.getItem(EXPORT_SETTINGS_STORAGE_KEY);
+    if (!saved) return;
+
+    const parsed = JSON.parse(saved);
+    const allowedFields: ExportField[] = ['sequence', 'title', 'source', 'datetime'];
+    const fields = Array.isArray(parsed.fields)
+      ? parsed.fields.filter((field: unknown): field is ExportField => allowedFields.includes(field as ExportField))
+      : exportSettings.value.fields;
+
+    exportSettings.value = {
+      format: parsed.format === 'txt' ? 'txt' : 'json',
+      fields,
+      prettyJson: parsed.prettyJson !== false,
+      includeFieldLabels: parsed.includeFieldLabels !== false,
+      selectedDiskTypes: Array.isArray(parsed.selectedDiskTypes) ? parsed.selectedDiskTypes : [],
+      allDiskTypesSelected: parsed.allDiskTypesSelected !== false
+    };
+  } catch (error) {
+    console.error('读取导出设置失败:', error);
+  }
+};
+
+const persistExportSettings = () => {
+  try {
+    localStorage.setItem(EXPORT_SETTINGS_STORAGE_KEY, JSON.stringify(exportSettings.value));
+  } catch (error) {
+    console.error('保存导出设置失败:', error);
+  }
+};
+
+const updateExportSettings = (value: ExportSettings) => {
+  exportSettings.value = {
+    ...value,
+    fields: [...value.fields]
+  };
+  persistExportSettings();
+};
+
+const openExportModal = () => {
+  if (!hasExportableResults.value) return;
+  showExportModal.value = true;
+};
+
+const closeExportModal = () => {
+  showExportModal.value = false;
+};
+
+type ExportRow = Record<ExportField, string>;
+type FixedExportFields = 'url' | 'password';
+type FullExportRow = ExportRow & Record<FixedExportFields, string> & { diskTypeKey: string; diskType: string };
+type ExportLinkBuildResult = {
+  url: string;
+  passwordIncluded: boolean;
+};
+
+const sanitizeFileNamePart = (value: string) => {
+  return value
+    .trim()
+    .replace(/[\\/:*?"<>|]+/g, '-')
+    .replace(/\s+/g, '-')
+    .slice(0, 48);
+};
+
+const normalizePasswordText = (value: string) => {
+  return value.trim().toLowerCase();
+};
+
+const isPasswordEmbeddedInUrl = (url: string, password: string) => {
+  if (!url || !password) return false;
+
+  const normalizedPassword = normalizePasswordText(password);
+  if (!normalizedPassword) return false;
+
+  const candidates = new Set<string>([url]);
+
+  try {
+    candidates.add(decodeURIComponent(url));
+  } catch {}
+
+  try {
+    candidates.add(decodeURI(url));
+  } catch {}
+
+  return Array.from(candidates).some(candidate => candidate.toLowerCase().includes(normalizedPassword));
+};
+
+const buildUrlWithQueryParam = (url: string, key: string, password: string) => {
+  try {
+    const parsed = new URL(url);
+    parsed.searchParams.set(key, password);
+    return parsed.toString();
+  } catch {
+    const connector = url.includes('?') ? '&' : '?';
+    return `${url}${connector}${key}=${encodeURIComponent(password)}`;
+  }
+};
+
+const buildIntegratedExportUrl = (diskTypeKey: string, url: string, password: string): ExportLinkBuildResult => {
+  if (!url || !password) {
+    return { url, passwordIncluded: !password };
+  }
+
+  if (isPasswordEmbeddedInUrl(url, password)) {
+    return { url, passwordIncluded: true };
+  }
+
+  const ruleMap: Record<string, string | null> = {
+    baidu: 'pwd',
+    tianyi: 'pwd',
+    mobile: 'pwd',
+    '123': 'pwd',
+    aliyun: 'password',
+    quark: 'pwd',
+    uc: 'pwd',
+    xunlei: 'pwd',
+    pikpak: 'pwd'
+  };
+
+  const paramName = ruleMap[diskTypeKey];
+  if (paramName) {
+    return {
+      url: buildUrlWithQueryParam(url, paramName, password),
+      passwordIncluded: true
+    };
+  }
+
+  return {
+    url,
+    passwordIncluded: false
+  };
+};
+
+const buildCombinedLinkLine = (row: FullExportRow) => {
+  const integrated = buildIntegratedExportUrl(row.diskTypeKey, row.url, row.password);
+
+  if (integrated.passwordIncluded || !row.password) {
+    return integrated.url;
+  }
+
+  return `${integrated.url} 提取码:${row.password}`;
+};
+
+const buildExportRows = () => {
+  const rows: FullExportRow[] = [];
+  const selectedSet = new Set((exportSettings.value.selectedDiskTypes || []).filter(Boolean));
+
+  Object.entries(searchResults.mergedResults || {}).forEach(([diskTypeKey, items]) => {
+    if (!Array.isArray(items)) return;
+    if (!exportSettings.value.allDiskTypesSelected && !selectedSet.has(diskTypeKey)) return;
+
+    items.forEach((item, index) => {
+      const row: FullExportRow = {
+        diskTypeKey,
+        diskType: getDiskTypeName(diskTypeKey),
+        sequence: String(index + 1),
+        title: item.note || '',
+        url: item.url || '',
+        password: item.password || '',
+        source: item.source || '',
+        datetime: item.datetime || ''
+      };
+
+      rows.push(row);
+    });
+  });
+
+  return rows;
+};
+
+const buildExportRecord = (row: FullExportRow, selectedFields: ExportField[]) => {
+  const integrated = buildIntegratedExportUrl(row.diskTypeKey, row.url, row.password);
+  const record = selectedFields.reduce<Record<string, string>>((record, field) => {
+    record[field] = row[field] || '';
+    return record;
+  }, {
+    url: integrated.url
+  });
+
+  if (row.password && !integrated.passwordIncluded) {
+    record.password = row.password;
+  }
+
+  return record;
+};
+
+const buildTxtValueLines = (row: FullExportRow, fields: ExportField[]) => {
+  const values: string[] = [];
+
+  fields.forEach(field => {
+    const value = row[field] || '';
+    if (value) {
+      values.push(value);
+    }
+  });
+
+  values.push(buildCombinedLinkLine(row));
+
+  return values.join('\n');
+};
+
+const buildJsonExportContent = (rows: FullExportRow[]) => {
+  const selectedFields = exportSettings.value.fields;
+  const groupedRows = rows.reduce<Record<string, FullExportRow[]>>((acc, row) => {
+    if (!acc[row.diskType]) acc[row.diskType] = [];
+    acc[row.diskType].push(row);
+    return acc;
+  }, {});
+
+  const payload = Object.entries(groupedRows).reduce<Record<string, Array<Record<string, string>>>>((acc, [diskType, groupRows]) => {
+    acc[diskType] = groupRows.map(row => buildExportRecord(row, selectedFields));
+    return acc;
+  }, {});
+
+  const meta = {
+    keyword: lastSearchParams.value?.kw || '',
+    total: searchResults.total,
+    exportedAt: new Date().toISOString(),
+    fields: [...selectedFields, 'url', 'password'],
+    groupedByDiskType: true,
+    diskTypes: exportSettings.value.allDiskTypesSelected
+      ? ['all']
+      : exportSettings.value.selectedDiskTypes
+  };
+
+  return JSON.stringify(
+    {
+      meta,
+      results: payload,
+      flatResults: rows.map(row => buildExportRecord(row, selectedFields))
+    },
+    null,
+    exportSettings.value.prettyJson ? 2 : 0
+  );
+};
+
+const fieldLabelMap: Record<ExportField | FixedExportFields, string> = {
+  sequence: '序号',
+  title: '标题',
+  url: '链接',
+  password: '提取码',
+  source: '来源',
+  datetime: '时间'
+};
+
+const buildTxtRow = (row: FullExportRow, fields: ExportField[]) => {
+  if (!exportSettings.value.includeFieldLabels) {
+    return buildTxtValueLines(row, fields);
+  }
+
+  const lines = fields.map(field => `${fieldLabelMap[field]}: ${row[field] || '无'}`);
+  lines.push(`${fieldLabelMap.url}: ${buildCombinedLinkLine(row)}`);
+
+  return lines.join('\n');
+};
+
+const buildTxtExportContent = (rows: FullExportRow[]) => {
+  const blocks: string[] = [];
+  const fields = exportSettings.value.fields;
+
+  const grouped = rows.reduce<Record<string, FullExportRow[]>>((acc, row) => {
+    if (!acc[row.diskType]) acc[row.diskType] = [];
+    acc[row.diskType].push(row);
+    return acc;
+  }, {});
+
+  Object.entries(grouped).forEach(([diskType, groupRows]) => {
+    blocks.push(`${diskType} (${groupRows.length})`);
+    blocks.push(groupRows.map((row) => buildTxtRow(row, fields)).join('\n\n'));
+  });
+
+  return blocks.filter(Boolean).join('\n\n');
+};
+
+const downloadContent = (content: string, fileName: string, mimeType: string) => {
+  const blob = new Blob([content], { type: `${mimeType};charset=utf-8` });
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement('a');
+  anchor.href = url;
+  anchor.download = fileName;
+  document.body.appendChild(anchor);
+  anchor.click();
+  document.body.removeChild(anchor);
+  URL.revokeObjectURL(url);
+};
+
+const handleExportConfirm = () => {
+  if (!hasExportableResults.value) return;
+
+  persistExportSettings();
+
+  const rows = buildExportRows();
+  const keyword = sanitizeFileNamePart(lastSearchParams.value?.kw || 'results');
+  const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+
+  if (exportSettings.value.format === 'json') {
+    const content = buildJsonExportContent(rows);
+    downloadContent(content, `pansou-${keyword}-${timestamp}.json`, 'application/json');
+  } else {
+    const content = buildTxtExportContent(rows);
+    downloadContent(content, `pansou-${keyword}-${timestamp}.txt`, 'text/plain');
+  }
+
+  closeExportModal();
+};
+
+const updateMobileSearchResultsHeight = () => {
+  if (typeof window === 'undefined' || window.innerWidth > 768) {
+    mobileSearchResultsHeight.value = '';
+    return;
+  }
+
+  const resultsBlock = searchResultsBlockRef.value;
+  const footer = footerRef.value;
+
+  if (!resultsBlock || !footer) {
+    mobileSearchResultsHeight.value = '';
+    return;
+  }
+
+  const resultsTop = resultsBlock.getBoundingClientRect().top;
+  const footerTop = footer.getBoundingClientRect().top;
+  const availableHeight = Math.floor(footerTop - resultsTop - 8);
+
+  mobileSearchResultsHeight.value = availableHeight > 0 ? `${availableHeight}px` : '';
+};
+
+const syncMobileSearchLayout = () => {
+  nextTick(() => {
+    updateMobileSearchResultsHeight();
+  });
+};
+
+watch(
+  () => [currentPage.value, hasSearched.value, loading.value, searchResults.total, isActivelySearching.value],
+  () => {
+    syncMobileSearchLayout();
+  },
+  { deep: true }
+);
 
 // 根据配置计算第二次、第三次搜索的src参数
 const calculateSrcForFullSearch = (): 'all' | 'tg' | 'plugin' => {
@@ -783,6 +1152,8 @@ const handleForceRefresh = () => {
 onMounted(async () => {
   // 首先初始化后端健康状态（只调用一次）
   await initBackendHealth();
+  loadExportSettings();
+  syncMobileSearchLayout();
   
   // 然后初始化其他状态
   checkAuth();
@@ -795,6 +1166,7 @@ onMounted(async () => {
   window.addEventListener('auth:required', handleAuthRequired);
   window.addEventListener('storage', handleStorageChange);
   window.addEventListener('config:saved', handleConfigSaved);
+  window.addEventListener('resize', syncMobileSearchLayout);
 });
 
 onUnmounted(() => {
@@ -803,11 +1175,12 @@ onUnmounted(() => {
   window.removeEventListener('auth:required', handleAuthRequired);
   window.removeEventListener('storage', handleStorageChange);
   window.removeEventListener('config:saved', handleConfigSaved);
+  window.removeEventListener('resize', syncMobileSearchLayout);
 });
 </script>
 
 <template>
-  <div class="min-h-screen bg-background text-foreground transition-colors duration-300 flex flex-col">
+  <div class="app-shell min-h-screen bg-background text-foreground transition-colors duration-300 flex flex-col">
     <!-- 登录对话框 -->
     <LoginDialog 
       v-model:visible="showLogin" 
@@ -818,7 +1191,7 @@ onUnmounted(() => {
     <div class="bg-decorative"></div>
     
     <!-- 导航栏 -->
-    <nav class="nav-header backdrop-blur-md bg-background/80 border-b border-border">
+    <nav ref="navHeaderRef" class="nav-header backdrop-blur-md bg-background/80 border-b border-border">
       <div class="container mx-auto px-4 h-16 flex items-center justify-between">
         <div class="flex items-center gap-3 cursor-pointer" @click="switchToSearch">
           <div class="w-8 h-8 bg-primary rounded-lg flex items-center justify-center">
@@ -909,11 +1282,15 @@ onUnmounted(() => {
     </nav>
     
     <!-- 主要内容区域 -->
-    <main class="container mx-auto px-4 py-8 flex-1">
+    <main
+      ref="mainContentRef"
+      class="main-content container mx-auto px-4 py-8 flex-1"
+      :class="{ 'search-main': currentPage === 'search' }"
+    >
       <!-- 搜索页面 -->
       <div v-if="currentPage === 'search'" class="search-page">
         <!-- 搜索表单 -->
-        <div class="mb-6">
+        <div class="search-form-block mb-6">
           <SearchForm 
             :backend-health="backendHealth"
             @search="handleSearch" 
@@ -922,7 +1299,7 @@ onUnmounted(() => {
         </div>
         
         <!-- 搜索统计 -->
-        <div v-if="hasSearched || loading" class="mb-6">
+        <div v-if="hasSearched || loading" class="search-stats-block mb-6">
           <SearchStats 
             :total="searchResults.total || 0" 
             :mergedResults="searchResults.mergedResults || {}" 
@@ -930,12 +1307,14 @@ onUnmounted(() => {
             :searchTime="searchTime"
             :isUpdating="isUpdating"
             :updateCount="updateCount"
+            :canExport="hasExportableResults"
+            @export-results="openExportModal"
             @force-refresh="handleForceRefresh"
           />
         </div>
         
         <!-- 加载状态 -->
-        <div v-if="loading" class="card p-6">
+        <div v-if="loading" class="search-loading-block card p-6">
           <div class="space-y-3">
             <div class="h-4 bg-muted rounded animate-pulse"></div>
             <div class="h-4 bg-muted rounded animate-pulse w-3/4"></div>
@@ -946,7 +1325,16 @@ onUnmounted(() => {
         </div>
         
         <!-- 搜索结果 -->
-        <div v-else>
+        <div
+          v-else
+          ref="searchResultsBlockRef"
+          class="search-results-block"
+          :style="mobileSearchResultsHeight ? {
+            height: mobileSearchResultsHeight,
+            minHeight: mobileSearchResultsHeight,
+            maxHeight: mobileSearchResultsHeight
+          } : undefined"
+        >
           <ResultTabs 
             :mergedResults="searchResults.mergedResults || {}" 
             :loading="loading"
@@ -954,6 +1342,16 @@ onUnmounted(() => {
             :isActivelySearching="isActivelySearching"
           />
         </div>
+
+        <ExportResultsModal
+          :visible="showExportModal"
+          :total="searchResults.total || 0"
+          :settings="exportSettings"
+          :available-disk-types="exportableDiskTypes"
+          @close="closeExportModal"
+          @update:settings="updateExportSettings"
+          @confirm="handleExportConfirm"
+        />
       </div>
       
       <!-- 配置页面 -->
@@ -995,7 +1393,7 @@ onUnmounted(() => {
     </main>
     
     <!-- 页脚 -->
-    <footer class="border-t border-border bg-background/50 backdrop-blur-sm mt-auto">
+    <footer ref="footerRef" class="footer-shell border-t border-border bg-background/50 backdrop-blur-sm mt-auto">
       <div class="container mx-auto px-4 py-4">
         <div class="flex items-center justify-center gap-4 text-sm text-muted-foreground">
           <span>© {{ new Date().getFullYear() }}-{{ new Date().getFullYear() + 10 }}</span>
@@ -1104,6 +1502,77 @@ onUnmounted(() => {
 }
 
 @media (max-width: 768px) {
+  .app-shell {
+    --mobile-footer-height: calc(3.15rem + env(safe-area-inset-bottom));
+    height: 100dvh;
+    min-height: 100dvh;
+    overflow: hidden;
+  }
+
+  .main-content {
+    flex: 1 1 auto;
+    height: calc(100dvh - 4rem - var(--mobile-footer-height));
+    min-height: 0;
+    box-sizing: border-box;
+    padding-top: 2rem;
+    padding-bottom: 0.5rem;
+    overflow: hidden;
+    overflow-x: hidden;
+  }
+
+  .main-content:not(.search-main) {
+    overflow-y: auto;
+  }
+
+  .footer-shell {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 30;
+    min-height: var(--mobile-footer-height);
+    margin-top: 0 !important;
+  }
+
+  .footer-shell .container {
+    box-sizing: border-box;
+    padding-top: 0.2rem;
+    padding-bottom: calc(0.2rem + env(safe-area-inset-bottom));
+    min-height: var(--mobile-footer-height);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .footer-shell .container > div {
+    gap: 1rem;
+    font-size: 0.875rem;
+    line-height: 1.25;
+    flex-wrap: nowrap;
+    align-items: center;
+  }
+
+  .search-page {
+    display: grid;
+    grid-template-rows: auto auto minmax(0, 1fr);
+    height: 100%;
+    min-height: 0;
+    gap: 1rem;
+  }
+
+  .search-form-block,
+  .search-stats-block,
+  .search-loading-block {
+    margin-bottom: 0 !important;
+    min-height: 0;
+  }
+
+  .search-results-block {
+    display: flex;
+    min-height: 0;
+    overflow: hidden;
+  }
+
   .container {
     padding-left: 1rem;
     padding-right: 1rem;

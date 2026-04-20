@@ -1077,9 +1077,41 @@ onUnmounted(() => {
 }
 
 @media (max-width: 768px) {
+  .results-wrapper {
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    flex: 1 1 auto;
+    min-height: 0;
+  }
+
+  .results-container {
+    display: flex;
+    flex-direction: column;
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow: hidden;
+  }
+
+  .tabs {
+    flex: 0 0 auto;
+  }
+
+  .tab-content {
+    display: flex;
+    flex-direction: column;
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow: hidden;
+  }
+
   .result-list {
-    max-height: 500px;
+    flex: 1 1 auto;
+    max-height: none;
+    min-height: 0;
     padding: 0.5rem;
+    overflow-y: auto;
+    scroll-padding-bottom: 1rem;
   }
   
   .result-item {
