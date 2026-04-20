@@ -75,3 +75,6 @@ export interface FilterConfig {
 
 // 导出QQPD相关类型
 export * from './qqpd' 
+export * from './gying'
+export * from './weibo'
+export * from './panlian'

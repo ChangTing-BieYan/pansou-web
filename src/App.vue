@@ -11,6 +11,7 @@ import LoginDialog from '@/components/LoginDialog.vue';
 import QQPDManager from '@/components/QQPDManager.vue';
 import AccountCenter from '@/components/AccountCenter.vue';
 import GyingManager from '@/components/GyingManager.vue';
+import PanlianManager from '@/components/PanlianManager.vue';
 import WeiboManager from '@/components/WeiboManager.vue';
 
 // 后端健康状态缓存（应用启动时获取一次）
@@ -47,7 +48,7 @@ const isActivelySearching = ref(false);
 let forceRefreshPending = false;
 
 // 当前页面状态
-const currentPage = ref<'search' | 'status' | 'docs' | 'accounts' | 'qqpd' | 'gying' | 'weibo'>('search');
+const currentPage = ref<'search' | 'status' | 'docs' | 'accounts' | 'qqpd' | 'gying' | 'panlian' | 'weibo'>('search');
 
 // 登录状态
 const showLogin = ref(false);
@@ -60,12 +61,15 @@ const isQQPDEnabled = ref(false);
 // Gying插件状态
 const isGyingEnabled = ref(false);
 
+// 盘链插件状态
+const isPanlianEnabled = ref(false);
+
 // Weibo插件状态
 const isWeiboEnabled = ref(false);
 
 // 检查是否有需要账号管理的服务
 const hasAccountServices = computed(() => {
-  return isQQPDEnabled.value || isGyingEnabled.value || isWeiboEnabled.value;
+  return isQQPDEnabled.value || isGyingEnabled.value || isPanlianEnabled.value || isWeiboEnabled.value;
 });
 
 // 页面切换
@@ -89,16 +93,22 @@ const switchToGying = () => {
   currentPage.value = 'gying';
 };
 
+const switchToPanlian = () => {
+  currentPage.value = 'panlian';
+};
+
 const switchToWeibo = () => {
   currentPage.value = 'weibo';
 };
 
 // 从账号中心导航到具体服务
-const handleAccountNavigate = (service: 'qqpd' | 'gying' | 'weibo') => {
+const handleAccountNavigate = (service: 'qqpd' | 'gying' | 'panlian' | 'weibo') => {
   if (service === 'qqpd') {
     switchToQQPD();
   } else if (service === 'gying') {
     switchToGying();
+  } else if (service === 'panlian') {
+    switchToPanlian();
   } else if (service === 'weibo') {
     switchToWeibo();
   }
@@ -682,6 +692,35 @@ const checkGyingPlugin = () => {
   }
 };
 
+// 检查盘链插件是否启用
+const checkPanlianPlugin = () => {
+  try {
+    const backendSupportsPanlian = backendHealth.value?.plugins?.includes('panlian') || false;
+
+    if (!backendSupportsPanlian) {
+      isPanlianEnabled.value = false;
+      return;
+    }
+
+    try {
+      const savedPlugins = localStorage.getItem('pansou_plugins');
+
+      if (savedPlugins === null) {
+        isPanlianEnabled.value = true;
+      } else {
+        const plugins = JSON.parse(savedPlugins);
+        isPanlianEnabled.value = Array.isArray(plugins) && plugins.includes('panlian');
+      }
+    } catch (err) {
+      console.error('读取用户插件配置失败:', err);
+      isPanlianEnabled.value = true;
+    }
+  } catch (error) {
+    console.error('检查Panlian插件失败:', error);
+    isPanlianEnabled.value = false;
+  }
+};
+
 // 检查Weibo插件是否启用
 const checkWeiboPlugin = () => {
   try {
@@ -717,6 +756,7 @@ const handleStorageChange = (e: StorageEvent) => {
   if (e.key === 'pansou_plugins') {
     checkQQPDPlugin();
     checkGyingPlugin();
+    checkPanlianPlugin();
     checkWeiboPlugin();
   }
 };
@@ -725,6 +765,7 @@ const handleStorageChange = (e: StorageEvent) => {
 const handleConfigSaved = () => {
   checkQQPDPlugin();
   checkGyingPlugin();
+  checkPanlianPlugin();
   checkWeiboPlugin();
 };
 
@@ -747,6 +788,7 @@ onMounted(async () => {
   checkAuth();
   checkQQPDPlugin();
   checkGyingPlugin();
+  checkPanlianPlugin();
   checkWeiboPlugin();
   
   // 监听事件
@@ -839,7 +881,7 @@ onUnmounted(() => {
             v-if="hasAccountServices"
             @click="switchToAccounts"
             class="nav-button"
-            :class="{ 'active': currentPage === 'accounts' || currentPage === 'qqpd' || currentPage === 'gying' || currentPage === 'weibo' }"
+            :class="{ 'active': currentPage === 'accounts' || currentPage === 'qqpd' || currentPage === 'gying' || currentPage === 'panlian' || currentPage === 'weibo' }"
             title="账号管理"
           >
             <span class="nav-icon">
@@ -940,6 +982,10 @@ onUnmounted(() => {
       <!-- 观影管理页面 -->
       <div v-else-if="currentPage === 'gying'" class="gying-page">
         <GyingManager @back-to-center="switchToAccounts" />
+      </div>
+
+      <div v-else-if="currentPage === 'panlian'" class="panlian-page">
+        <PanlianManager @back-to-center="switchToAccounts" />
       </div>
       
       <!-- 微博管理页面 -->
