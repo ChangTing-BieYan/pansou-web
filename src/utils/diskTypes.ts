@@ -6,6 +6,7 @@ export const diskTypeMap: Record<string, string> = {
   '123': '123',
   'xunlei': '迅雷',
   'quark': '夸克',
+  'guangya': '光鸭',
   'mobile': '移动',
   'tianyi': '天翼',
   'uc': 'UC',

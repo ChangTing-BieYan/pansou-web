@@ -822,7 +822,7 @@ const healthResponseFields = [
 
 const checkParams = [
   { name: 'items', type: 'object[]', required: true, description: '待检测链接数组，至少提供一项' },
-  { name: 'items[].disk_type', type: 'string', required: true, description: '网盘类型，如 baidu、quark、xunlei、115、mobile' },
+  { name: 'items[].disk_type', type: 'string', required: true, description: '网盘类型，如 baidu、quark、xunlei、115、mobile（仅已接入检测的类型）' },
   { name: 'items[].url', type: 'string', required: true, description: '完整分享链接' },
   { name: 'items[].password', type: 'string', required: false, description: '提取码，未拼接进链接时可传' },
   { name: 'view_token', type: 'string', required: false, description: '前端视图标识，可选' }
@@ -845,6 +845,7 @@ const cloudTypes = [
   { id: 'baidu', name: '百度网盘', icon: '🔵' },
   { id: 'aliyun', name: '阿里云盘', icon: '🟠' },
   { id: 'quark', name: '夸克网盘', icon: '🟡' },
+  { id: 'guangya', name: '光鸭云盘', icon: '🦆' },
   { id: 'tianyi', name: '天翼云盘', icon: '🔴' },
   { id: 'uc', name: 'UC网盘', icon: '🟢' },
   { id: 'mobile', name: '移动云盘', icon: '🔵' },

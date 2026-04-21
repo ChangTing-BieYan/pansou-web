@@ -11,19 +11,33 @@ const props = defineProps<{
 
 // 网盘类型配置
 const diskTypes = [
-  { id: 'baidu', name: '百度网盘', color: '#2932e1' },
-  { id: 'aliyun', name: '阿里云盘', color: '#ff6a00' },
-  { id: 'quark', name: '夸克网盘', color: '#1890ff' },
-  { id: 'tianyi', name: '天翼云盘', color: '#0066cc' },
-  { id: '115', name: '115网盘', color: '#02a7f0' },
-  { id: 'xunlei', name: '迅雷网盘', color: '#0090ff' },
-  { id: 'uc', name: 'UC网盘', color: '#ff6600' },
-  { id: 'mobile', name: '移动云盘', color: '#0080ff' },
+  { id: 'baidu', name: '百度', color: '#2932e1' },
+  { id: 'aliyun', name: '阿里', color: '#ff6a00' },
+  { id: 'quark', name: '夸克', color: '#1890ff' },
+  { id: 'guangya', name: '光鸭', color: '#0ea5a3' },
+  { id: 'tianyi', name: '天翼', color: '#0066cc' },
+  { id: '115', name: '115', color: '#02a7f0' },
+  { id: 'xunlei', name: '迅雷', color: '#0090ff' },
+  { id: 'uc', name: 'UC', color: '#ff6600' },
+  { id: 'mobile', name: '移动', color: '#0080ff' },
   { id: 'pikpak', name: 'PikPak', color: '#ff4785' },
-  { id: '123', name: '123网盘', color: '#00b96b' },
-  { id: 'magnet', name: '磁力链接', color: '#722ed1' },
-  { id: 'ed2k', name: '电驴链接', color: '#fa8c16' }
+  { id: '123', name: '123', color: '#00b96b' },
+  { id: 'magnet', name: '磁力', color: '#722ed1' },
+  { id: 'ed2k', name: '电驴', color: '#fa8c16' }
 ];
+
+const mergeLatestDiskTypes = (savedTypes: string[]) => {
+  const currentTypeIds = diskTypes.map((item) => item.id);
+  const normalizedTypes = savedTypes.filter((type) => currentTypeIds.includes(type));
+  const missingTypes = currentTypeIds.filter((type) => !normalizedTypes.includes(type));
+
+  // 兼容旧配置：如果之前实际上是“全选”，但因为新增类型导致只缺少少量新项，则自动补齐。
+  if (missingTypes.length > 0 && normalizedTypes.length >= currentTypeIds.length - missingTypes.length) {
+    return [...normalizedTypes, ...missingTypes];
+  }
+
+  return normalizedTypes;
+};
 
 // 状态数据（使用传入的 props）
 const healthData = ref<HealthStatus | null>(null);
@@ -111,7 +125,7 @@ const loadConfig = () => {
     }
 
     if (savedDiskTypes) {
-      selectedDiskTypes.value = JSON.parse(savedDiskTypes);
+      selectedDiskTypes.value = mergeLatestDiskTypes(JSON.parse(savedDiskTypes));
     } else {
       // 默认选中所有网盘类型
       selectedDiskTypes.value = diskTypes.map(d => d.id);
