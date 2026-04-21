@@ -18,7 +18,7 @@ ENV CACHE_PATH=/app/data/cache
 ENV LOG_PATH=/app/data/logs
 
 # 默认插件配置
-ENV ENABLED_PLUGINS=hunhepan,jikepan,panwiki,pansearch,panta,qupansou,hdr4k,pan666,susu,thepiratebay,wanou,xuexizhinan,panyq,zhizhen,labi,muou,ouge,shandian,duoduo,huban,cyg,erxiao,miaoso,fox4k,pianku,clmao,wuji,cldi,xiaozhang,libvio,leijing,xb6v,xys,ddys,hdmoli,yuhuage,u3c3,javdb,clxiong,jutoushe,sdso,xiaoji,xdyh,haisou,bixin,djgou,nyaa,xinjuc,aikanzy,qupanshe,xdpan,discourse,yunsou,qqpd,ahhhhfs,nsgame,gying,quark4k,quarksoo,sousou,ash,weibo,feikuai,kkmao,alupan,ypfxw,mikuclub,daishudj,dyyj,meitizy,jsnoteclub,mizixing,lou1,yiove,zxzj,qingying,kkv,yulinshufa,duanjuw,jupansou,lingjisp,quarktv,dyyjpro,gaoqing888,panlian,panzun
+ENV ENABLED_PLUGINS=labi,zhizhen,shandian,duoduo,wanou,gyingENV ENABLED_PLUGINS=labi,zhizhen,shandian,duoduo,wanou,gying
 
 # 默认Telegram频道配置
 ENV CHANNELS=tgsearchers3,tianyirigeng,tyypzhpd,cloudtianyi,tianyifc,ydypzyfx,yunpan139,ucquark,ucwpz,yyunpanuc,zyzhpd123,xx123pan,yp123pan,yggpan,zyfb123ENV CHANNELS=tgsearchers3,tianyirigeng,tyypzhpd,cloudtianyi,tianyifc,ydypzyfx,yunpan139,ucquark,ucwpz,yyunpanuc,zyzhpd123,xx123pan,yp123pan,yggpan,zyfb123
