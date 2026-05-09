@@ -26,17 +26,9 @@ const diskTypes = [
   { id: 'ed2k', name: '电驴', color: '#fa8c16' }
 ];
 
-const mergeLatestDiskTypes = (savedTypes: string[]) => {
-  const currentTypeIds = diskTypes.map((item) => item.id);
-  const normalizedTypes = savedTypes.filter((type) => currentTypeIds.includes(type));
-  const missingTypes = currentTypeIds.filter((type) => !normalizedTypes.includes(type));
-
-  // 兼容旧配置：如果之前实际上是“全选”，但因为新增类型导致只缺少少量新项，则自动补齐。
-  if (missingTypes.length > 0 && normalizedTypes.length >= currentTypeIds.length - missingTypes.length) {
-    return [...normalizedTypes, ...missingTypes];
-  }
-
-  return normalizedTypes;
+const normalizeSavedDiskTypes = (savedTypes: string[]) => {
+  const currentTypeIds = new Set(diskTypes.map((item) => item.id));
+  return savedTypes.filter((type) => currentTypeIds.has(type));
 };
 
 // 状态数据（使用传入的 props）
@@ -125,7 +117,7 @@ const loadConfig = () => {
     }
 
     if (savedDiskTypes) {
-      selectedDiskTypes.value = mergeLatestDiskTypes(JSON.parse(savedDiskTypes));
+      selectedDiskTypes.value = normalizeSavedDiskTypes(JSON.parse(savedDiskTypes));
     } else {
       // 默认选中所有网盘类型
       selectedDiskTypes.value = diskTypes.map(d => d.id);
@@ -431,7 +423,12 @@ onMounted(() => {
           @click="activeTab = 'detection'"
         >
           <span class="tab-label">检测</span>
-          <span class="tab-count">{{ detectionSettings.enabled ? 1 : 0 }}</span>
+          <span
+            class="tab-status"
+            :class="detectionSettings.enabled ? 'enabled' : 'disabled'"
+          >
+            {{ detectionSettings.enabled ? '已开启' : '已关闭' }}
+          </span>
         </button>
       </div>
 
@@ -883,6 +880,44 @@ onMounted(() => {
 .tab-button.active .tab-count {
   background: hsl(var(--primary));
   color: hsl(var(--primary-foreground));
+}
+
+.tab-status {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 3.75rem;
+  height: 1.5rem;
+  padding: 0 0.55rem;
+  border-radius: 9999px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  line-height: 1;
+  white-space: nowrap;
+  border: 1px solid transparent;
+}
+
+.tab-status.enabled {
+  background: rgb(34 197 94 / 0.12);
+  color: rgb(21 128 61);
+  border-color: rgb(34 197 94 / 0.18);
+}
+
+.tab-status.disabled {
+  background: hsl(var(--muted));
+  color: hsl(var(--muted-foreground));
+  border-color: hsl(var(--border));
+}
+
+.tab-button.active .tab-status.enabled {
+  background: rgb(34 197 94 / 0.16);
+  color: rgb(21 128 61);
+}
+
+.tab-button.active .tab-status.disabled {
+  background: hsl(var(--foreground) / 0.08);
+  color: hsl(var(--foreground));
+  border-color: hsl(var(--border));
 }
 
 /* Tab内容 */
