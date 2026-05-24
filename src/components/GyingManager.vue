@@ -352,6 +352,15 @@ const handleLogin = async () => {
     }
   } catch (error: any) {
     console.error('登录失败:', error)
+    if (error.code === 'ECONNABORTED' || error.message?.includes('timeout')) {
+      await loadStatus()
+      if (isLoggedIn.value) {
+        showAlertMessage('登录成功！', 'success')
+        loginPassword.value = ''
+        loggingIn.value = false
+        return
+      }
+    }
     const message = error.response?.data?.message || '登录失败'
     showAlertMessage(message, 'error')
   } finally {

@@ -8,9 +8,12 @@ import type {
 } from '@/types/gying'
 
 // 创建Gying API实例
+const GYING_DEFAULT_TIMEOUT = 30000
+const GYING_LONG_TIMEOUT = 120000
+
 const gyingApi = axios.create({
   baseURL: '/gying',  // 代理到后端 http://localhost:8888/gying
-  timeout: 15000
+  timeout: GYING_DEFAULT_TIMEOUT
 })
 
 // 请求拦截器 - 自动添加token（支持安全认证）
@@ -93,6 +96,8 @@ export const login = async (hash: string, username: string, password: string): P
     action: 'login',
     username,
     password
+  }, {
+    timeout: GYING_LONG_TIMEOUT
   })
   return response.data
 }
@@ -123,6 +128,8 @@ export const testSearch = async (
     action: 'test_search',
     keyword,
     max_results: maxResults
+  }, {
+    timeout: GYING_LONG_TIMEOUT
   })
   return response.data
 }
