@@ -551,6 +551,18 @@
             </div>
 
             <div class="form-group">
+              <label>proxy_url:</label>
+              <input
+                v-model="checkForm.proxy_url"
+                class="form-input"
+                placeholder="可选，如 socks5://127.0.0.1:1080"
+              />
+              <p class="auth-hint">
+                💡 仅影响本次链接检测请求，支持 http://、https://、socks5://、socks5h://；未填写时使用后端默认代理配置
+              </p>
+            </div>
+
+            <div class="form-group">
               <label>检测项:</label>
               <div class="check-items">
                 <div
@@ -825,6 +837,8 @@ const checkParams = [
   { name: 'items[].disk_type', type: 'string', required: true, description: '网盘类型，如 baidu、quark、xunlei、115、mobile（仅已接入检测的类型）' },
   { name: 'items[].url', type: 'string', required: true, description: '完整分享链接' },
   { name: 'items[].password', type: 'string', required: false, description: '提取码，未拼接进链接时可传' },
+  { name: 'proxy_url', type: 'string', required: false, description: '请求级代理地址，位于请求根节点，支持 http://、https://、socks5://、socks5h://' },
+  { name: 'proxy', type: 'string', required: false, description: 'proxy_url 的兼容别名；同时传入时以 proxy_url 为准' },
   { name: 'view_token', type: 'string', required: false, description: '前端视图标识，可选' }
 ];
 
@@ -902,6 +916,7 @@ const createCheckItem = () => ({
 
 const checkForm = ref({
   view_token: '',
+  proxy_url: '',
   items: [createCheckItem()]
 });
 const authLoading = ref(false);
@@ -1139,6 +1154,7 @@ const generateCheckRequest = () => {
 
         return result;
       }),
+    ...(checkForm.value.proxy_url.trim() ? { proxy_url: checkForm.value.proxy_url.trim() } : {}),
     ...(checkForm.value.view_token.trim() ? { view_token: checkForm.value.view_token.trim() } : {})
   };
 
@@ -1191,6 +1207,7 @@ const testCheckAPI = async () => {
 
         return result;
       }),
+      ...(checkForm.value.proxy_url.trim() ? { proxy_url: checkForm.value.proxy_url.trim() } : {}),
       ...(checkForm.value.view_token.trim() ? { view_token: checkForm.value.view_token.trim() } : {})
     };
 
@@ -1328,6 +1345,7 @@ const clearAuthForm = () => {
 const clearCheckForm = () => {
   checkForm.value = {
     view_token: '',
+    proxy_url: '',
     items: [createCheckItem()]
   };
   checkResponse.value = null;

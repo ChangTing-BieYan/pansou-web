@@ -241,6 +241,7 @@ health:{diskType}:{normalizedUrl}
       "password": "abcd"
     }
   ],
+  "proxy_url": "socks5://127.0.0.1:1080",
   "view_token": "tab-quark-1713600000000"
 }
 ```
@@ -248,6 +249,13 @@ health:{diskType}:{normalizedUrl}
 `view_token` 用于前端丢弃过期响应：
 
 - 用户切换 tab 或重新搜索后，旧响应即使返回，也不再落到当前界面。
+
+`proxy_url` 为可选请求级代理参数：
+
+- 位于请求根节点，只影响当前 `POST /api/check/links` 请求。
+- 支持 `http://`、`https://`、`socks5://`、`socks5h://`。
+- 不传时使用后端默认HTTP客户端配置。
+- 后端会按代理地址隔离检测缓存，避免不同出口IP复用同一检测结果。
 
 ## 6. 后端 API 设计 `../pansou`
 
@@ -272,6 +280,8 @@ health:{diskType}:{normalizedUrl}
 type CheckRequest struct {
     Items     []InspectItem `json:"items"`
     ViewToken string        `json:"view_token,omitempty"`
+    ProxyURL  string        `json:"proxy_url,omitempty"`
+    Proxy     string        `json:"proxy,omitempty"`
 }
 
 type InspectItem struct {
